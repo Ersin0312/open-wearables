@@ -21,6 +21,7 @@ import {
   useSessionSets,
   useStartSession,
   useEndSession,
+  useDeleteSession,
   useAddSet,
   useDeleteSet,
 } from '@/hooks/api/use-training';
@@ -645,6 +646,14 @@ function SessionDetailDialog({
 }) {
   const { data: session, isLoading: sessionLoading } = useTrainingSession(userId, sessionId);
   const { data: sets, isLoading: setsLoading } = useSessionSets(userId, sessionId);
+  const deleteSet = useDeleteSet(userId, sessionId ?? '');
+  const deleteSession = useDeleteSession(userId);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+
+  // Reset confirm state every time the dialog is opened with a new session.
+  useEffect(() => {
+    setConfirmDelete(false);
+  }, [sessionId]);
 
   const grouped = useMemo(() => {
     const g: Record<string, TrainingSet[]> = {};
@@ -693,11 +702,52 @@ function SessionDetailDialog({
                     userId={userId}
                     exerciseId={exId}
                     sets={exSets}
-                    // No delete in history view — read-only
+                    onDelete={(setId) => deleteSet.mutate(setId)}
                   />
                 ))}
               </div>
             )}
+
+            {/* Destructive zone: inline 2-step confirm to avoid stacked dialogs */}
+            <div className="pt-4 border-t border-border/30">
+              {confirmDelete ? (
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <Button
+                    variant="outline"
+                    className="flex-1"
+                    onClick={() => setConfirmDelete(false)}
+                  >
+                    Abbrechen
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    className="flex-1"
+                    disabled={deleteSession.isPending}
+                    onClick={() =>
+                      deleteSession.mutate(session.id, {
+                        onSuccess: () => {
+                          setConfirmDelete(false);
+                          onClose();
+                        },
+                      })
+                    }
+                  >
+                    <Trash2 className="h-4 w-4 mr-2" />
+                    Ja, Session und alle Sätze löschen
+                  </Button>
+                </div>
+              ) : (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-[hsl(var(--destructive-muted))] hover:text-[hsl(var(--destructive-muted))] hover:bg-[hsl(var(--destructive-muted)/0.08)]"
+                  onClick={() => setConfirmDelete(true)}
+                >
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Session löschen
+                </Button>
+              )}
+            </div>
           </div>
         )}
       </DialogContent>
