@@ -8,6 +8,7 @@ import {
   ExternalLink,
   Webhook,
   RefreshCw,
+  Dumbbell,
 } from 'lucide-react';
 import logotype from '@/logotype.svg';
 import { cn } from '@/lib/utils';
@@ -25,6 +26,12 @@ const menuItems = [
     title: 'Users',
     url: ROUTES.users,
     icon: Users,
+  },
+  {
+    title: 'Training',
+    url: ROUTES.training,
+    icon: Dumbbell,
+    badge: 'New',
   },
   {
     title: 'Webhooks',

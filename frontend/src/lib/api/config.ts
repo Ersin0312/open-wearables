@@ -118,4 +118,18 @@ export const API_ENDPOINTS = {
   syncStatusRecent: (userId: string) => `/api/v1/users/${userId}/sync/recent`,
   syncStatusRuns: (userId: string) => `/api/v1/users/${userId}/sync/runs`,
   syncStatusAllRuns: '/api/v1/sync/runs',
+
+  // Training endpoints (manual strength-training log)
+  trainingExercises: '/api/v1/training/exercises',
+  trainingExerciseDetail: (id: string) => `/api/v1/training/exercises/${id}`,
+  trainingSessions: (userId: string) => `/api/v1/users/${userId}/training/sessions`,
+  trainingSessionDetail: (userId: string, sessionId: string) =>
+    `/api/v1/users/${userId}/training/sessions/${sessionId}`,
+  trainingSessionEnd: (userId: string, sessionId: string) =>
+    `/api/v1/users/${userId}/training/sessions/${sessionId}/end`,
+  trainingSessionSets: (userId: string, sessionId: string) =>
+    `/api/v1/users/${userId}/training/sessions/${sessionId}/sets`,
+  trainingSessionSetDetail: (userId: string, sessionId: string, setId: string) =>
+    `/api/v1/users/${userId}/training/sessions/${sessionId}/sets/${setId}`,
+  trainingLastSession: (userId: string) => `/api/v1/users/${userId}/training/last-session`,
 } as const;
