@@ -9,6 +9,7 @@ from .developer import Developer
 from .device_type_priority import DeviceTypePriority
 from .event_record import EventRecord
 from .event_record_detail import EventRecordDetail
+from .exercise import Exercise
 from .invitation import Invitation
 from .personal_record import PersonalRecord
 from .provider_priority import ProviderPriority
@@ -16,6 +17,8 @@ from .provider_setting import ProviderSetting
 from .refresh_token import RefreshToken
 from .series_type_definition import SeriesTypeDefinition
 from .sleep_details import SleepDetails
+from .training_session import TrainingSession
+from .training_set import TrainingSet
 from .user import User
 from .user_connection import UserConnection
 from .user_invitation_code import UserInvitationCode
@@ -38,7 +41,10 @@ __all__ = [
     "UserInvitationCode",
     "EventRecord",
     "EventRecordDetail",
+    "Exercise",
     "SleepDetails",
+    "TrainingSession",
+    "TrainingSet",
     "WorkoutDetails",
     "PersonalRecord",
     "DataPointSeries",
