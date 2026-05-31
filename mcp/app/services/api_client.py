@@ -203,6 +203,71 @@ class OpenWearablesClient:
             params["cursor"] = cursor
         return await self._request("GET", f"/api/v1/users/{user_id}/timeseries", params=params)
 
+    # ------------------------- Training (manual strength log) -------------------------
+
+    async def get_training_sessions(
+        self,
+        user_id: str,
+        start_date: str | None = None,
+        end_date: str | None = None,
+        split_tag: str | None = None,
+        limit: int = 100,
+    ) -> list[dict[str, Any]]:
+        """List training sessions for a user (optionally filtered by date / split)."""
+        params: dict[str, Any] = {"limit": limit}
+        if start_date:
+            params["start_date"] = start_date
+        if end_date:
+            params["end_date"] = end_date
+        if split_tag:
+            params["split_tag"] = split_tag
+        return await self._request("GET", f"/api/v1/users/{user_id}/training/sessions", params=params)
+
+    async def get_training_session_sets(self, user_id: str, session_id: str) -> list[dict[str, Any]]:
+        """List all sets logged in a given training session."""
+        return await self._request(
+            "GET", f"/api/v1/users/{user_id}/training/sessions/{session_id}/sets"
+        )
+
+    async def get_exercises(self, user_id: str) -> list[dict[str, Any]]:
+        """List the exercise library visible to the user (seeded + custom)."""
+        return await self._request(
+            "GET", "/api/v1/training/exercises", params={"user_id": user_id}
+        )
+
+    # ------------------------- Supplements (manual NEM log) -------------------------
+
+    async def get_supplements(self, user_id: str) -> list[dict[str, Any]]:
+        """List the supplement library visible to the user (seeded + custom)."""
+        return await self._request("GET", "/api/v1/supplements", params={"user_id": user_id})
+
+    async def get_supplement_stacks(self, user_id: str) -> list[dict[str, Any]]:
+        """List the user's supplement stacks with their items."""
+        return await self._request("GET", f"/api/v1/users/{user_id}/supplement-stacks")
+
+    async def get_supplement_intakes(
+        self,
+        user_id: str,
+        start_date: str | None = None,
+        end_date: str | None = None,
+        limit: int = 500,
+    ) -> list[dict[str, Any]]:
+        """List logged supplement intakes for a user within a date range."""
+        params: dict[str, Any] = {"limit": limit}
+        if start_date:
+            params["start_date"] = start_date
+        if end_date:
+            params["end_date"] = end_date
+        return await self._request(
+            "GET", f"/api/v1/users/{user_id}/supplement-intakes", params=params
+        )
+
+    # ------------------------- Body composition -------------------------
+
+    async def get_body_summary(self, user_id: str) -> dict[str, Any]:
+        """Get the user's current body-composition snapshot (weight, body fat, BMI, ...)."""
+        return await self._request("GET", f"/api/v1/users/{user_id}/summaries/body")
+
 
 # Singleton instance
 client = OpenWearablesClient()

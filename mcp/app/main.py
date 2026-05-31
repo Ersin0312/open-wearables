@@ -8,8 +8,11 @@ from fastmcp import FastMCP
 from app.config import settings
 from app.prompts import prompts_router
 from app.tools.activity import activity_router
+from app.tools.body import body_router
 from app.tools.sleep import sleep_router
+from app.tools.supplements import supplements_router
 from app.tools.timeseries import timeseries_router
+from app.tools.training import training_router
 from app.tools.users import users_router
 from app.tools.workouts import workouts_router
 
@@ -37,9 +40,15 @@ mcp = FastMCP(
     - get_sleep_summary: Get sleep data for a user over a specified time period
     - get_workout_events: Get workout/exercise data for a user over a specified time period
     - get_timeseries: Get granular time-series samples (e.g. weight, SpO2, HRV, intraday heart rate)
+    - get_training_log: Get the manual strength-training log (sessions, sets, volume per exercise/muscle group)
+    - get_supplement_log: Get the supplement (NEM) intake log, stacks, and daily-dose adherence
+    - get_body_composition: Get current body composition + weight/body-fat trends over time
 
     Available prompts:
     - present_health_data: Guidelines for formatting health data for human readability
+    - coach_scientist: Persona 'Der Wissenschaftler' — a data-driven, evidence-based health coach
+      that builds an adjustable daily plan (food, fluids, supplements, recovery, training)
+      from the user's actual logged data
 
     Workflow:
     1. If you don't know the user's ID, call get_users first to discover available users
@@ -118,6 +127,9 @@ mcp.mount(activity_router)
 mcp.mount(sleep_router)
 mcp.mount(workouts_router)
 mcp.mount(timeseries_router)
+mcp.mount(training_router)
+mcp.mount(supplements_router)
+mcp.mount(body_router)
 
 # Mount prompts
 mcp.mount(prompts_router)
