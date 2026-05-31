@@ -25,6 +25,7 @@ from .strava_webhooks import router as strava_webhooks_router
 from .summaries import router as summaries_router
 from .sync_data import router as sync_data_router
 from .sync_status import router as sync_status_router
+from .supplements import router as supplements_router
 from .timeseries import router as timeseries_router
 from .token import router as token_router
 from .training import router as training_router
@@ -55,6 +56,7 @@ v1_router.include_router(token_router, tags=["External: Token"])
 v1_router.include_router(data_sources_router, tags=["External: Data Sources"])
 v1_router.include_router(outgoing_webhooks_router, prefix="/webhooks", tags=["External: Webhooks"])
 v1_router.include_router(training_router, tags=["External: Training (manual)"])
+v1_router.include_router(supplements_router, tags=["External: Supplements (manual)"])
 
 # --- Internal: dashboard endpoints ---
 v1_router.include_router(auth_router, prefix="/auth", tags=["Internal: Auth"])

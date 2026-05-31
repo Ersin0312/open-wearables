@@ -17,6 +17,10 @@ from .provider_setting import ProviderSetting
 from .refresh_token import RefreshToken
 from .series_type_definition import SeriesTypeDefinition
 from .sleep_details import SleepDetails
+from .supplement import Supplement
+from .supplement_intake import SupplementIntake
+from .supplement_stack import SupplementStack
+from .supplement_stack_item import SupplementStackItem
 from .training_session import TrainingSession
 from .training_set import TrainingSet
 from .user import User
@@ -43,6 +47,10 @@ __all__ = [
     "EventRecordDetail",
     "Exercise",
     "SleepDetails",
+    "Supplement",
+    "SupplementIntake",
+    "SupplementStack",
+    "SupplementStackItem",
     "TrainingSession",
     "TrainingSet",
     "WorkoutDetails",

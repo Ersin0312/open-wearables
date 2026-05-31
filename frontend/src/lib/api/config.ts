@@ -132,4 +132,16 @@ export const API_ENDPOINTS = {
   trainingSessionSetDetail: (userId: string, sessionId: string, setId: string) =>
     `/api/v1/users/${userId}/training/sessions/${sessionId}/sets/${setId}`,
   trainingLastSession: (userId: string) => `/api/v1/users/${userId}/training/last-session`,
+
+  // Supplement endpoints
+  supplements: '/api/v1/supplements',
+  supplementDetail: (id: string) => `/api/v1/supplements/${id}`,
+  supplementStacks: (userId: string) => `/api/v1/users/${userId}/supplement-stacks`,
+  supplementStackDetail: (userId: string, stackId: string) =>
+    `/api/v1/users/${userId}/supplement-stacks/${stackId}`,
+  supplementStackLogNow: (userId: string, stackId: string) =>
+    `/api/v1/users/${userId}/supplement-stacks/${stackId}/log-now`,
+  supplementIntakes: (userId: string) => `/api/v1/users/${userId}/supplement-intakes`,
+  supplementIntakeDetail: (userId: string, intakeId: string) =>
+    `/api/v1/users/${userId}/supplement-intakes/${intakeId}`,
 } as const;

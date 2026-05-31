@@ -9,6 +9,7 @@ import {
   Webhook,
   RefreshCw,
   Dumbbell,
+  Pill,
 } from 'lucide-react';
 import logotype from '@/logotype.svg';
 import { cn } from '@/lib/utils';
@@ -31,6 +32,11 @@ const menuItems = [
     title: 'Training',
     url: ROUTES.training,
     icon: Dumbbell,
+  },
+  {
+    title: 'Supplements',
+    url: ROUTES.supplements,
+    icon: Pill,
     badge: 'New',
   },
   {
