@@ -21,11 +21,15 @@ from app.schemas.providers.apple.health_auto_export import HealthAutoExportPaylo
 from app.services.timeseries_service import timeseries_service
 
 # Health Auto Export metric name (lowercased) → our SeriesType.
-# Names can vary slightly between app versions, so we match by substring.
-_METRIC_MATCHERS: list[tuple[tuple[str, ...], SeriesType]] = [
-    (("weight_body_mass", "body_mass", "weight"), SeriesType.weight),
-    (("body_fat_percentage", "body_fat"), SeriesType.body_fat_percentage),
-]
+# EXACT match only. Substring matching was a bug: "body_mass" also matches
+# "lean_body_mass" and "body_mass_index", so weight/lean-mass/BMI all collided
+# on SeriesType.weight and overwrote each other (same recorded_at → upsert keeps
+# the last one). That made body weight show up as 71.5 (lean mass) or 33.3 (BMI)
+# instead of the real value.
+_METRIC_NAME_TO_SERIES: dict[str, SeriesType] = {
+    "weight_body_mass": SeriesType.weight,
+    "body_fat_percentage": SeriesType.body_fat_percentage,
+}
 
 # Source string — must contain "apple" so the provider resolves to APPLE.
 _SOURCE = "apple_health_auto_export"
@@ -37,11 +41,7 @@ class HealthAutoExportService:
 
     @staticmethod
     def _match_series_type(metric_name: str) -> SeriesType | None:
-        name = metric_name.lower()
-        for needles, series_type in _METRIC_MATCHERS:
-            if any(n in name for n in needles):
-                return series_type
-        return None
+        return _METRIC_NAME_TO_SERIES.get(metric_name.strip().lower())
 
     @staticmethod
     def _normalize_body_fat(value: Decimal) -> Decimal:
