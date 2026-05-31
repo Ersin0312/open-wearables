@@ -1,19 +1,23 @@
 import json
 from json import JSONDecodeError
+from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Request, UploadFile, status
 from pydantic import ValidationError
 
+from app.database import DbSession
 from app.integrations.celery.tasks.process_xml_upload_task import process_xml_upload
 from app.schemas.providers.apple.apple_xml import (
     PresignedURLRequest,
     PresignedURLResponse,
     SNSNotification,
 )
+from app.schemas.providers.apple.health_auto_export import HealthAutoExportPayload
 from app.schemas.responses.upload import UploadDataResponse
 from app.services import ApiKeyDep
 from app.services.apple.apple_xml.presigned_url_service import presigned_url_service
 from app.services.apple.apple_xml.sns_service import sns_service
+from app.services.apple.health_auto_export_service import health_auto_export_service
 
 router = APIRouter()
 
@@ -45,6 +49,21 @@ def import_xml_file(
         "task_id": task.id,
         "user_id": user_id,
     }
+
+
+@router.post("/users/{user_id}/import/apple/health-auto-export")
+def import_health_auto_export(
+    user_id: UUID,
+    payload: HealthAutoExportPayload,
+    db: DbSession,
+    _api_key: ApiKeyDep,
+) -> dict[str, object]:
+    """Ingest body metrics (weight, body fat) from the 'Health Auto Export'
+    iPhone app's REST automation. Point that app's REST export at this URL with
+    the X-Open-Wearables-API-Key header; it then pushes Renpho → Apple Health
+    data here automatically on its schedule."""
+    counts = health_auto_export_service.ingest(db, user_id, payload)
+    return {"status": "ok", "user_id": str(user_id), "ingested": counts}
 
 
 @router.post("/sns/notification", status_code=status.HTTP_202_ACCEPTED)

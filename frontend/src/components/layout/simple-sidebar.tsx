@@ -10,6 +10,7 @@ import {
   RefreshCw,
   Dumbbell,
   Pill,
+  Scale,
 } from 'lucide-react';
 import logotype from '@/logotype.svg';
 import { cn } from '@/lib/utils';
@@ -37,6 +38,12 @@ const menuItems = [
     title: 'Supplements',
     url: ROUTES.supplements,
     icon: Pill,
+    badge: 'New',
+  },
+  {
+    title: 'Körper',
+    url: ROUTES.body,
+    icon: Scale,
     badge: 'New',
   },
   {

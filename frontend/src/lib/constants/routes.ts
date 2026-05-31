@@ -12,6 +12,7 @@ export const ROUTES = {
   user: '/users/$userId',
   training: '/training',
   supplements: '/supplements',
+  body: '/body',
   webhooks: '/webhooks',
   syncs: '/syncs',
   settings: '/settings',
