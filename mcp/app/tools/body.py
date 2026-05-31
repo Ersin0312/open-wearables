@@ -69,15 +69,27 @@ async def get_body_composition(
         result = {"user": user, "snapshot": snapshot}
 
         if start_date and end_date:
-            ts = await client.get_timeseries(
-                user_id=user_id,
-                start_time=f"{start_date}T00:00:00Z",
-                end_time=f"{end_date}T23:59:59Z",
-                types=["weight", "body_fat_percentage"],
-                resolution="1hour",
-                limit=1000,
-            )
-            samples = ts.get("data", []) if isinstance(ts, dict) else []
+            # The timeseries endpoint caps limit at 100, so page through with the
+            # cursor until exhausted (body-scale data is sparse, usually 1 page).
+            samples: list[dict] = []
+            cursor: str | None = None
+            for _ in range(20):  # hard stop: max 2000 points
+                ts = await client.get_timeseries(
+                    user_id=user_id,
+                    start_time=f"{start_date}T00:00:00Z",
+                    end_time=f"{end_date}T23:59:59Z",
+                    types=["weight", "body_fat_percentage"],
+                    resolution="1hour",
+                    limit=100,
+                    cursor=cursor,
+                )
+                if not isinstance(ts, dict):
+                    break
+                samples.extend(ts.get("data", []))
+                pagination = ts.get("pagination") or {}
+                cursor = pagination.get("next_cursor")
+                if not cursor or not pagination.get("has_more"):
+                    break
             weight_pts = []
             fat_pts = []
             for s in samples:
