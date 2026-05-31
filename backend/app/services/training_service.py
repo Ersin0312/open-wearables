@@ -72,6 +72,56 @@ class TrainingSessionService(
         self.logger.debug(f"Ended training session {session_id}")
         return session
 
+    def reopen_session(self, db_session: DbSession, session_id: UUID) -> TrainingSession:
+        """Re-open a previously ended session so the user can add/edit sets."""
+        session = self.get_with_sets(db_session, session_id)
+        session.ended_at = None
+        db_session.add(session)
+        db_session.commit()
+        db_session.refresh(session)
+        self.logger.debug(f"Reopened training session {session_id}")
+        return session
+
+    def duplicate_session(self, db_session: DbSession, session_id: UUID, user_id: UUID) -> TrainingSession:
+        """Create a fresh session (started_at=now, no ended_at) that mirrors the
+        exercises and sets of the source session. Useful for repeating yesterday's
+        workout with the same plan but new live weights."""
+        from uuid import uuid4
+
+        from app.models import TrainingSet as TrainingSetModel  # local import to avoid circulars
+
+        source = self.get_with_sets(db_session, session_id)
+        if source.user_id != user_id:
+            raise ResourceNotFoundError("training_session", session_id)
+
+        new_session = TrainingSession(
+            id=uuid4(),
+            user_id=user_id,
+            started_at=datetime.now(timezone.utc),
+            ended_at=None,
+            split_tag=source.split_tag,
+            notes=source.notes,
+        )
+        db_session.add(new_session)
+        db_session.flush()
+
+        for s in source.sets:
+            db_session.add(
+                TrainingSetModel(
+                    id=uuid4(),
+                    session_id=new_session.id,
+                    exercise_id=s.exercise_id,
+                    set_number=s.set_number,
+                    reps=s.reps,
+                    weight_kg=s.weight_kg,
+                    rpe=s.rpe,
+                    notes=s.notes,
+                )
+            )
+        db_session.commit()
+        self.logger.debug(f"Duplicated session {session_id} -> {new_session.id}")
+        return self.get_with_sets(db_session, new_session.id)
+
     def get_last_for_user_and_split(
         self,
         db_session: DbSession,

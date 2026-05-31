@@ -153,6 +153,28 @@ def end_session(
     return training_session_service.end_session(db, session_id, payload.ended_at)
 
 
+@router.post(
+    "/users/{user_id}/training/sessions/{session_id}/reopen",
+    response_model=TrainingSessionResponse,
+)
+def reopen_session(user_id: UUID, session_id: UUID, db: DbSession, _api_key: ApiKeyDep):
+    """Re-open an ended session so the user can edit / add sets."""
+    existing = training_session_service.get(db, session_id, raise_404=True)
+    if existing.user_id != user_id:
+        raise HTTPException(status_code=404, detail="Session not found for this user")
+    return training_session_service.reopen_session(db, session_id)
+
+
+@router.post(
+    "/users/{user_id}/training/sessions/{session_id}/duplicate",
+    status_code=status.HTTP_201_CREATED,
+    response_model=TrainingSessionResponse,
+)
+def duplicate_session(user_id: UUID, session_id: UUID, db: DbSession, _api_key: ApiKeyDep):
+    """Clone an existing session + its sets into a fresh live session (started_at=now)."""
+    return training_session_service.duplicate_session(db, session_id, user_id)
+
+
 @router.delete(
     "/users/{user_id}/training/sessions/{session_id}",
     response_model=TrainingSessionResponse,

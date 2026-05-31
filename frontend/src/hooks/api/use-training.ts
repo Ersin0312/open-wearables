@@ -5,6 +5,7 @@ import {
   type ExerciseFilterParams,
   type SessionCreatePayload,
   type SetCreatePayload,
+  type SetUpdatePayload,
 } from '../../lib/api/services/training.service';
 
 // ----- Query keys (local — small enough not to need the central registry) -----
@@ -75,6 +76,36 @@ export function useEndSession(userId: string) {
   });
 }
 
+export function useReopenSession(userId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (sessionId: string) => trainingService.reopenSession(userId, sessionId),
+    // Seed the single-session cache synchronously so the resume-guard in
+    // TrainingPage reads ended_at=null immediately. Without this the guard
+    // sees the stale (ended) cached session and instantly clears the active
+    // session, bouncing the user back to the start screen.
+    onSuccess: (data) => {
+      qc.setQueryData(trainingKeys.session(userId, data.id), data);
+      qc.invalidateQueries({ queryKey: trainingKeys.all });
+      toast.success('Session wieder geöffnet');
+    },
+    onError: (e: unknown) => toast.error(e instanceof Error ? e.message : 'Failed to reopen session'),
+  });
+}
+
+export function useDuplicateSession(userId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (sessionId: string) => trainingService.duplicateSession(userId, sessionId),
+    onSuccess: (data) => {
+      qc.setQueryData(trainingKeys.session(userId, data.id), data);
+      qc.invalidateQueries({ queryKey: trainingKeys.all });
+      toast.success('Session dupliziert');
+    },
+    onError: (e: unknown) => toast.error(e instanceof Error ? e.message : 'Failed to duplicate session'),
+  });
+}
+
 export function useDeleteSession(userId: string) {
   const qc = useQueryClient();
   return useMutation({
@@ -104,6 +135,18 @@ export function useAddSet(userId: string, sessionId: string) {
       qc.invalidateQueries({ queryKey: trainingKeys.sets(userId, sessionId) });
     },
     onError: (e: unknown) => toast.error(e instanceof Error ? e.message : 'Failed to add set'),
+  });
+}
+
+export function useUpdateSet(userId: string, sessionId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ setId, payload }: { setId: string; payload: SetUpdatePayload }) =>
+      trainingService.updateSet(userId, sessionId, setId, payload),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: trainingKeys.sets(userId, sessionId) });
+    },
+    onError: (e: unknown) => toast.error(e instanceof Error ? e.message : 'Failed to update set'),
   });
 }
 

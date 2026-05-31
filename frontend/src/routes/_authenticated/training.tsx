@@ -1,6 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router';
-import { useEffect, useMemo, useState } from 'react';
-import { Dumbbell, History, Plus, Search, Square, Trash2, X } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Check, Copy, Dumbbell, History, Pencil, Plus, RotateCcw, Search, Square, Trash2, X } from 'lucide-react';
 import { PageHeader } from '@/components/ui/page-header';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -21,8 +21,11 @@ import {
   useSessionSets,
   useStartSession,
   useEndSession,
+  useReopenSession,
+  useDuplicateSession,
   useDeleteSession,
   useAddSet,
+  useUpdateSet,
   useDeleteSet,
 } from '@/hooks/api/use-training';
 import type {
@@ -128,6 +131,10 @@ function TrainingPage() {
         userId={userId}
         sessions={sessions ?? []}
         activeSessionId={activeSessionId}
+        onActivate={(id) => {
+          window.localStorage.setItem(ACTIVE_SESSION_KEY, id);
+          setActiveSessionId(id);
+        }}
       />
     </div>
   );
@@ -250,6 +257,7 @@ function SetLoggerForm({
   const [weight, setWeight] = useState<string>('');
   const [search, setSearch] = useState<string>('');
   const [lightboxOpen, setLightboxOpen] = useState(false);
+  const weightRef = useRef<HTMLInputElement>(null);
 
   const { data: existingSets } = useSessionSets(userId, session.id);
   const nextSetNumber = useMemo(() => {
@@ -280,7 +288,13 @@ function SetLoggerForm({
         weight_kg: weightNum,
       },
       {
-        onSuccess: () => setReps(''),
+        // Most users keep reps constant and only change weight set-to-set, so
+        // we clear weight (forcing a conscious re-entry) and keep reps as default.
+        // Refocus weight so the next set can be logged purely by keyboard.
+        onSuccess: () => {
+          setWeight('');
+          weightRef.current?.focus();
+        },
       },
     );
   };
@@ -321,12 +335,20 @@ function SetLoggerForm({
             className="h-12 text-base"
             value={reps}
             onChange={(e) => setReps(e.target.value)}
+            onKeyDown={(e) => {
+              // Enter on reps jumps to weight (Tab does this natively too).
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                weightRef.current?.focus();
+              }
+            }}
             placeholder="10"
           />
         </div>
         <div className="space-y-2">
           <Label htmlFor="weight">Gewicht (kg)</Label>
           <Input
+            ref={weightRef}
             id="weight"
             type="number"
             inputMode="decimal"
@@ -334,6 +356,13 @@ function SetLoggerForm({
             className="h-12 text-base"
             value={weight}
             onChange={(e) => setWeight(e.target.value)}
+            onKeyDown={(e) => {
+              // Enter on weight logs the set immediately (fast keyboard flow).
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                submit();
+              }
+            }}
             placeholder="70"
           />
         </div>
@@ -387,6 +416,13 @@ function ExercisePicker({
           placeholder="z. B. 3014, Brustpresse, Butterfly…"
           value={search}
           onChange={(e) => onSearchChange(e.target.value)}
+          onKeyDown={(e) => {
+            // Escape wipes the whole query in one keystroke.
+            if (e.key === 'Escape') {
+              e.preventDefault();
+              onSearchChange('');
+            }
+          }}
           autoFocus
         />
         {search && (
@@ -486,6 +522,8 @@ function SetList({
   isLoading: boolean;
 }) {
   const deleteSet = useDeleteSet(userId, sessionId);
+  const updateSet = useUpdateSet(userId, sessionId);
+  const { data: exercises } = useExercises({ user_id: userId });
 
   if (isLoading) return <Skeleton className="h-24 w-full" />;
   if (sets.length === 0) {
@@ -496,22 +534,20 @@ function SetList({
     );
   }
 
-  const grouped: Record<string, TrainingSet[]> = {};
-  for (const s of sets) {
-    (grouped[s.exercise_id] ??= []).push(s);
-  }
+  const orderedGroups = groupSetsByMuscle(sets, exercises ?? []);
 
   return (
     <Card className="p-5 space-y-4">
       <h3 className="font-semibold">Sätze in dieser Session</h3>
       <div className="space-y-3">
-        {Object.entries(grouped).map(([exId, exSets]) => (
+        {orderedGroups.map(({ exerciseId, sets: exSets }) => (
           <ExerciseSetGroup
-            key={exId}
+            key={exerciseId}
             userId={userId}
-            exerciseId={exId}
+            exerciseId={exerciseId}
             sets={exSets}
             onDelete={(setId) => deleteSet.mutate(setId)}
+            onUpdate={(setId, payload) => updateSet.mutate({ setId, payload })}
           />
         ))}
       </div>
@@ -524,38 +560,138 @@ function ExerciseSetGroup({
   exerciseId,
   sets,
   onDelete,
+  onUpdate,
 }: {
   userId: string;
   exerciseId: string;
   sets: TrainingSet[];
   onDelete?: (setId: string) => void;
+  onUpdate?: (setId: string, payload: { reps: number; weight_kg: number }) => void;
 }) {
   const { data: exercises } = useExercises({ user_id: userId });
   const exercise = exercises?.find((e) => e.id === exerciseId);
+
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editReps, setEditReps] = useState('');
+  const [editWeight, setEditWeight] = useState('');
+
+  const startEdit = (s: TrainingSet) => {
+    setEditingId(s.id);
+    setEditReps(String(s.reps));
+    setEditWeight(String(parseFloat(s.weight_kg)));
+  };
+
+  const cancelEdit = () => setEditingId(null);
+
+  const saveEdit = (setId: string) => {
+    const r = parseInt(editReps, 10);
+    const w = parseFloat(editWeight);
+    if (isNaN(r) || isNaN(w)) return;
+    onUpdate?.(setId, { reps: r, weight_kg: w });
+    setEditingId(null);
+  };
 
   return (
     <div className="space-y-2">
       <div className="text-sm font-medium">{exercise?.name ?? 'Unbekannte Übung'}</div>
       <div className="space-y-1">
-        {sets.map((s) => (
-          <div
-            key={s.id}
-            className="flex items-center justify-between text-sm px-2 py-1 rounded bg-card/50"
-          >
-            <div className="flex items-center gap-3">
-              <Badge variant="outline" className="font-mono">#{s.set_number}</Badge>
-              <span>
-                {s.reps} reps × {parseFloat(s.weight_kg)} kg
-              </span>
-              <span className="text-xs text-muted-foreground">{formatTime(s.created_at)}</span>
+        {sets.map((s) => {
+          const isEditing = editingId === s.id;
+          return (
+            <div
+              key={s.id}
+              className="flex items-center justify-between text-sm px-2 py-1 rounded bg-card/50"
+            >
+              {isEditing ? (
+                <div className="flex items-center gap-2 flex-1">
+                  <Badge variant="outline" className="font-mono">#{s.set_number}</Badge>
+                  <Input
+                    type="number"
+                    inputMode="numeric"
+                    className="h-8 w-16 text-sm"
+                    value={editReps}
+                    onChange={(e) => setEditReps(e.target.value)}
+                    aria-label="Wiederholungen"
+                  />
+                  <span className="text-xs text-muted-foreground">reps ×</span>
+                  <Input
+                    type="number"
+                    inputMode="decimal"
+                    step="0.5"
+                    className="h-8 w-20 text-sm"
+                    value={editWeight}
+                    onChange={(e) => setEditWeight(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        saveEdit(s.id);
+                      } else if (e.key === 'Escape') {
+                        e.preventDefault();
+                        cancelEdit();
+                      }
+                    }}
+                    aria-label="Gewicht in kg"
+                  />
+                  <span className="text-xs text-muted-foreground">kg</span>
+                </div>
+              ) : (
+                <div className="flex items-center gap-3">
+                  <Badge variant="outline" className="font-mono">#{s.set_number}</Badge>
+                  <span>
+                    {s.reps} reps × {parseFloat(s.weight_kg)} kg
+                  </span>
+                  <span className="text-xs text-muted-foreground">{formatTime(s.created_at)}</span>
+                </div>
+              )}
+
+              <div className="flex items-center gap-0.5">
+                {isEditing ? (
+                  <>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => saveEdit(s.id)}
+                      aria-label="Speichern"
+                    >
+                      <Check className="h-3.5 w-3.5 text-[hsl(var(--success-muted))]" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={cancelEdit}
+                      aria-label="Abbrechen"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    {onUpdate && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => startEdit(s)}
+                        aria-label="Satz bearbeiten"
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </Button>
+                    )}
+                    {onDelete && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => onDelete(s.id)}
+                        aria-label="Satz löschen"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    )}
+                  </>
+                )}
+              </div>
             </div>
-            {onDelete && (
-              <Button variant="ghost" size="sm" onClick={() => onDelete(s.id)}>
-                <Trash2 className="h-3.5 w-3.5" />
-              </Button>
-            )}
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
@@ -566,10 +702,12 @@ function SessionHistorySection({
   userId,
   sessions,
   activeSessionId,
+  onActivate,
 }: {
   userId: string;
   sessions: TrainingSession[];
   activeSessionId: string | null;
+  onActivate: (sessionId: string) => void;
 }) {
   const [historyOpen, setHistoryOpen] = useState(false);
   const [detailSessionId, setDetailSessionId] = useState<string | null>(null);
@@ -630,6 +768,14 @@ function SessionHistorySection({
         userId={userId}
         sessionId={detailSessionId}
         onClose={() => setDetailSessionId(null)}
+        onReopen={(id) => {
+          setHistoryOpen(false);
+          onActivate(id);
+        }}
+        onDuplicate={(id) => {
+          setHistoryOpen(false);
+          onActivate(id);
+        }}
       />
     </>
   );
@@ -639,15 +785,23 @@ function SessionDetailDialog({
   userId,
   sessionId,
   onClose,
+  onReopen,
+  onDuplicate,
 }: {
   userId: string;
   sessionId: string | null;
   onClose: () => void;
+  onReopen?: (newActiveSessionId: string) => void;
+  onDuplicate?: (newSessionId: string) => void;
 }) {
   const { data: session, isLoading: sessionLoading } = useTrainingSession(userId, sessionId);
   const { data: sets, isLoading: setsLoading } = useSessionSets(userId, sessionId);
+  const { data: exercises } = useExercises({ user_id: userId });
   const deleteSet = useDeleteSet(userId, sessionId ?? '');
+  const updateSet = useUpdateSet(userId, sessionId ?? '');
   const deleteSession = useDeleteSession(userId);
+  const reopenSession = useReopenSession(userId);
+  const duplicateSession = useDuplicateSession(userId);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   // Reset confirm state every time the dialog is opened with a new session.
@@ -655,11 +809,10 @@ function SessionDetailDialog({
     setConfirmDelete(false);
   }, [sessionId]);
 
-  const grouped = useMemo(() => {
-    const g: Record<string, TrainingSet[]> = {};
-    (sets ?? []).forEach((s) => (g[s.exercise_id] ??= []).push(s));
-    return g;
-  }, [sets]);
+  const orderedGroups = useMemo(
+    () => groupSetsByMuscle(sets ?? [], exercises ?? []),
+    [sets, exercises],
+  );
 
   const duration =
     session?.ended_at && session.started_at
@@ -696,17 +849,58 @@ function SessionDetailDialog({
               </p>
             ) : (
               <div className="space-y-3">
-                {Object.entries(grouped).map(([exId, exSets]) => (
+                {orderedGroups.map(({ exerciseId, sets: exSets }) => (
                   <ExerciseSetGroup
-                    key={exId}
+                    key={exerciseId}
                     userId={userId}
-                    exerciseId={exId}
+                    exerciseId={exerciseId}
                     sets={exSets}
                     onDelete={(setId) => deleteSet.mutate(setId)}
+                    onUpdate={(setId, payload) => updateSet.mutate({ setId, payload })}
                   />
                 ))}
               </div>
             )}
+
+            {/* Action zone: reopen (only if ended) + duplicate (always) */}
+            <div className="pt-4 border-t border-border/30 flex flex-col sm:flex-row gap-2">
+              {session.ended_at && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="flex-1"
+                  disabled={reopenSession.isPending}
+                  onClick={() =>
+                    reopenSession.mutate(session.id, {
+                      onSuccess: () => {
+                        onReopen?.(session.id);
+                        onClose();
+                      },
+                    })
+                  }
+                >
+                  <RotateCcw className="h-4 w-4 mr-2" />
+                  Session wieder öffnen
+                </Button>
+              )}
+              <Button
+                variant="outline"
+                size="sm"
+                className="flex-1"
+                disabled={duplicateSession.isPending}
+                onClick={() =>
+                  duplicateSession.mutate(session.id, {
+                    onSuccess: (newSession) => {
+                      onDuplicate?.(newSession.id);
+                      onClose();
+                    },
+                  })
+                }
+              >
+                <Copy className="h-4 w-4 mr-2" />
+                Session duplizieren
+              </Button>
+            </div>
 
             {/* Destructive zone: inline 2-step confirm to avoid stacked dialogs */}
             <div className="pt-4 border-t border-border/30">
@@ -756,14 +950,46 @@ function SessionDetailDialog({
 }
 
 // ===================== Helpers =====================
+// Group sets by exercise, then order the groups by muscle region
+// (Brust → Rücken → Schultern → Arme → Beine → …) per MUSCLE_ORDER.
+// Within a group, sets keep their logged order (by set_number).
+function groupSetsByMuscle(
+  sets: TrainingSet[],
+  exercises: Exercise[],
+): { exerciseId: string; sets: TrainingSet[] }[] {
+  const byExercise: Record<string, TrainingSet[]> = {};
+  for (const s of sets) {
+    (byExercise[s.exercise_id] ??= []).push(s);
+  }
+
+  const muscleIndex = (exId: string): number => {
+    const ex = exercises.find((e) => e.id === exId);
+    const idx = ex ? MUSCLE_ORDER.indexOf(ex.primary_muscle_group) : -1;
+    // Unknown / unmatched muscle groups sort to the very end.
+    return idx === -1 ? MUSCLE_ORDER.length : idx;
+  };
+
+  return Object.entries(byExercise)
+    .map(([exerciseId, exSets]) => ({
+      exerciseId,
+      sets: [...exSets].sort((a, b) => a.set_number - b.set_number),
+    }))
+    .sort((a, b) => muscleIndex(a.exerciseId) - muscleIndex(b.exerciseId));
+}
+
 function groupExercises(
   exercises: Exercise[],
   search: string,
 ): { group: string; label: string; items: Exercise[] }[] {
-  const searchLower = search.trim().toLowerCase();
-  const filtered = exercises.filter((ex) =>
-    searchLower ? ex.name.toLowerCase().includes(searchLower) : true,
-  );
+  // Token-AND search: every space-separated token must appear in the name.
+  // "schrägbank pure" matches "Pure Kraft Schrägbank" because both tokens
+  // appear (order-independent).
+  const tokens = search.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  const filtered = exercises.filter((ex) => {
+    if (tokens.length === 0) return true;
+    const name = ex.name.toLowerCase();
+    return tokens.every((t) => name.includes(t));
+  });
   const groups: Record<string, Exercise[]> = {};
   filtered.forEach((ex) => {
     (groups[ex.primary_muscle_group] ??= []).push(ex);

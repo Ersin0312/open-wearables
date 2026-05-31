@@ -67,6 +67,14 @@ export interface SetCreatePayload {
   notes?: string | null;
 }
 
+export interface SetUpdatePayload {
+  set_number?: number;
+  reps?: number;
+  weight_kg?: number;
+  rpe?: number | null;
+  notes?: string | null;
+}
+
 export interface ExerciseFilterParams {
   user_id: string;
   split_tag?: string;
@@ -109,6 +117,20 @@ export const trainingService = {
     return apiClient.post<TrainingSession>(API_ENDPOINTS.trainingSessionEnd(userId, sessionId), {});
   },
 
+  async reopenSession(userId: string, sessionId: string): Promise<TrainingSession> {
+    return apiClient.post<TrainingSession>(
+      `/api/v1/users/${userId}/training/sessions/${sessionId}/reopen`,
+      {},
+    );
+  },
+
+  async duplicateSession(userId: string, sessionId: string): Promise<TrainingSession> {
+    return apiClient.post<TrainingSession>(
+      `/api/v1/users/${userId}/training/sessions/${sessionId}/duplicate`,
+      {},
+    );
+  },
+
   async deleteSession(userId: string, sessionId: string): Promise<TrainingSession> {
     return apiClient.delete<TrainingSession>(API_ENDPOINTS.trainingSessionDetail(userId, sessionId));
   },
@@ -128,6 +150,18 @@ export const trainingService = {
     return apiClient.post<TrainingSet>(
       API_ENDPOINTS.trainingSessionSets(userId, sessionId),
       payload
+    );
+  },
+
+  async updateSet(
+    userId: string,
+    sessionId: string,
+    setId: string,
+    payload: SetUpdatePayload,
+  ): Promise<TrainingSet> {
+    return apiClient.patch<TrainingSet>(
+      API_ENDPOINTS.trainingSessionSetDetail(userId, sessionId, setId),
+      payload,
     );
   },
 
