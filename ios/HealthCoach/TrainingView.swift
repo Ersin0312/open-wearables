@@ -104,16 +104,9 @@ struct ActiveSessionView: View {
                         VStack(alignment: .leading, spacing: 4) {
                             Text(group.name).font(.subheadline).bold()
                             ForEach(group.sets) { s in
-                                HStack {
-                                    Text("#\(s.setNumber)").font(.caption).foregroundStyle(.secondary)
-                                    Text("\(s.reps) reps × \(fmt(Double(s.weightKg) ?? 0)) kg")
-                                    Spacer()
-                                }
-                                .swipeActions {
-                                    Button(role: .destructive) {
-                                        Task { await vm.deleteSet(s) }
-                                    } label: { Label("Löschen", systemImage: "trash") }
-                                }
+                                SetRow(set: s,
+                                       onSave: { reps, w in Task { await vm.updateSet(s, reps: reps, weight: w) } },
+                                       onDelete: { Task { await vm.deleteSet(s) } })
                             }
                         }
                     }
@@ -177,6 +170,48 @@ struct SetLoggerSection: View {
                     }
                 }
             }
+        }
+    }
+}
+
+/// One logged set with inline edit (pencil) + delete (swipe).
+struct SetRow: View {
+    let set: TrainingSet
+    let onSave: (Int, Double) -> Void
+    let onDelete: () -> Void
+
+    @State private var editing = false
+    @State private var reps = ""
+    @State private var weight = ""
+
+    var body: some View {
+        HStack {
+            Text("#\(set.setNumber)").font(.caption).foregroundStyle(.secondary)
+            if editing {
+                TextField("Wdh.", text: $reps).keyboardType(.numberPad).frame(width: 50)
+                Text("×").foregroundStyle(.secondary)
+                TextField("kg", text: $weight).keyboardType(.decimalPad).frame(width: 60)
+                Spacer()
+                Button {
+                    if let r = Int(reps), let w = Double(weight.replacingOccurrences(of: ",", with: ".")) {
+                        onSave(r, w)
+                    }
+                    editing = false
+                } label: { Image(systemName: "checkmark.circle.fill").foregroundStyle(.green) }
+                Button { editing = false } label: { Image(systemName: "xmark.circle").foregroundStyle(.secondary) }
+            } else {
+                Text("\(set.reps) reps × \(fmt(Double(set.weightKg) ?? 0)) kg")
+                Spacer()
+                Button {
+                    reps = String(set.reps)
+                    weight = fmt(Double(set.weightKg) ?? 0)
+                    editing = true
+                } label: { Image(systemName: "pencil").foregroundStyle(.secondary) }
+            }
+        }
+        .buttonStyle(.borderless)
+        .swipeActions {
+            Button(role: .destructive, action: onDelete) { Label("Löschen", systemImage: "trash") }
         }
     }
 }

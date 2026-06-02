@@ -120,6 +120,29 @@ struct APIClient {
         return try await send(req, as: SupplementStack.self)
     }
 
+    func updateSupplement(id: String, name: String, brand: String?, category: String, defaultDose: Double?, defaultUnit: String, recommendedDailyDose: Double?, notes: String?) async throws -> Supplement {
+        var payload: [String: Any] = ["name": name, "category": category, "default_unit": defaultUnit]
+        payload["brand"] = brand ?? NSNull()
+        payload["default_dose"] = defaultDose ?? NSNull()
+        payload["recommended_daily_dose"] = recommendedDailyDose ?? NSNull()
+        payload["notes"] = notes ?? NSNull()
+        let body = try JSONSerialization.data(withJSONObject: payload)
+        let req = try makeRequest("/api/v1/supplements/\(id)", method: "PATCH", body: body)
+        return try await send(req, as: Supplement.self)
+    }
+
+    func deleteSupplement(id: String) async throws {
+        let req = try makeRequest("/api/v1/supplements/\(id)", method: "DELETE")
+        _ = try await sendDiscardingResult(req)
+    }
+
+    func updateSet(sessionID: String, setID: String, reps: Int, weightKg: Double) async throws -> TrainingSet {
+        let payload: [String: Any] = ["reps": reps, "weight_kg": weightKg]
+        let body = try JSONSerialization.data(withJSONObject: payload)
+        let req = try makeRequest("/api/v1/users/\(AppConfig.userID)/training/sessions/\(sessionID)/sets/\(setID)", method: "PATCH", body: body)
+        return try await send(req, as: TrainingSet.self)
+    }
+
     func createSupplement(name: String, brand: String?, category: String, defaultDose: Double?, defaultUnit: String, recommendedDailyDose: Double?, notes: String?) async throws -> Supplement {
         var payload: [String: Any] = [
             "name": name,

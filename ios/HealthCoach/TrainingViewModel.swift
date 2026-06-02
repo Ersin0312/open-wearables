@@ -149,6 +149,14 @@ final class TrainingViewModel: ObservableObject {
         } catch { self.error = error.localizedDescription }
     }
 
+    func updateSet(_ s: TrainingSet, reps: Int, weight: Double) async {
+        guard let id = activeSessionID else { return }
+        do {
+            _ = try await APIClient.shared.updateSet(sessionID: id, setID: s.id, reps: reps, weightKg: weight)
+            sets = try await APIClient.shared.sets(sessionID: id)
+        } catch { self.error = error.localizedDescription }
+    }
+
     /// Sets grouped by exercise, ordered by muscle region.
     struct ExerciseGroup: Identifiable {
         let id: String          // exercise id

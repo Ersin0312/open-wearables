@@ -94,6 +94,7 @@ struct SupplementsView: View {
     @State private var showLogSingle = false
     @State private var showCreateStack = false
     @State private var showCreateSupplement = false
+    @State private var showLibrary = false
 
     var body: some View {
         NavigationStack {
@@ -122,7 +123,7 @@ struct SupplementsView: View {
                     } label: { Image(systemName: "plus") }
                 }
                 ToolbarItem(placement: .topBarLeading) {
-                    Button { Task { await vm.load() } } label: { Image(systemName: "arrow.clockwise") }
+                    Button { showLibrary = true } label: { Image(systemName: "books.vertical") }
                 }
             }
             .sheet(isPresented: $showLogSingle) {
@@ -152,6 +153,9 @@ struct SupplementsView: View {
                         } catch { vm.error = error.localizedDescription }
                     }
                 }
+            }
+            .sheet(isPresented: $showLibrary) {
+                NemLibrarySheet(supplements: vm.supplements, onChanged: { Task { await vm.load() } })
             }
             .task { await vm.load() }
         }
