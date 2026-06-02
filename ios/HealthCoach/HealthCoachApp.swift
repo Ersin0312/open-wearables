@@ -14,14 +14,20 @@ struct RootView: View {
 
     var body: some View {
         TabView {
+            DashboardView()
+                .tabItem { Label("Übersicht", systemImage: "square.grid.2x2.fill") }
+
             TrainingView()
                 .tabItem { Label("Training", systemImage: "dumbbell.fill") }
 
             SupplementsView()
                 .tabItem { Label("Supplements", systemImage: "pills.fill") }
 
+            BodyView()
+                .tabItem { Label("Körper", systemImage: "figure.stand") }
+
             SettingsView(hasKey: $hasKey)
-                .tabItem { Label("Einstellungen", systemImage: "gearshape.fill") }
+                .tabItem { Label("Mehr", systemImage: "gearshape.fill") }
         }
     }
 }

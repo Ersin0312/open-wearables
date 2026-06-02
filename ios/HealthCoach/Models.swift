@@ -111,6 +111,65 @@ struct TrainingSet: Codable, Identifiable, Hashable {
     }
 }
 
+// MARK: - Body composition
+
+struct BodySlowChanging: Codable, Hashable {
+    let weightKg: Double?
+    let heightCm: Double?
+    let bodyFatPercent: Double?
+    let muscleMassKg: Double?
+    let bmi: Double?
+
+    enum CodingKeys: String, CodingKey {
+        case weightKg = "weight_kg"
+        case heightCm = "height_cm"
+        case bodyFatPercent = "body_fat_percent"
+        case muscleMassKg = "muscle_mass_kg"
+        case bmi
+    }
+}
+
+struct BodySummary: Codable, Hashable {
+    let slowChanging: BodySlowChanging?
+
+    enum CodingKeys: String, CodingKey {
+        case slowChanging = "slow_changing"
+    }
+}
+
+// MARK: - Recovery (WHOOP)
+
+struct RecoveryDay: Codable, Identifiable, Hashable {
+    var id: String { date }
+    let date: String
+    let recoveryScore: Double?
+    let restingHeartRateBpm: Double?
+    let avgHrvSdnnMs: Double?
+
+    enum CodingKeys: String, CodingKey {
+        case date
+        case recoveryScore = "recovery_score"
+        case restingHeartRateBpm = "resting_heart_rate_bpm"
+        case avgHrvSdnnMs = "avg_hrv_sdnn_ms"
+    }
+}
+
+struct RecoveryResponse: Codable {
+    let data: [RecoveryDay]
+}
+
+// MARK: - Timeseries (weight / body fat trends)
+
+struct TimeseriesSample: Codable, Hashable {
+    let timestamp: String
+    let type: String
+    let value: Double
+}
+
+struct TimeseriesResponse: Codable {
+    let data: [TimeseriesSample]
+}
+
 // MARK: - Users
 
 struct UserItem: Codable, Identifiable {
