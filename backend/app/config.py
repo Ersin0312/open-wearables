@@ -47,6 +47,12 @@ class Settings(BaseSettings):
     db_user: str = "open-wearables"
     db_password: SecretStr = SecretStr("open-wearables")
 
+    # Coach (Anthropic Claude API proxy)
+    # Set ANTHROPIC_API_KEY in backend/config/.env to enable the in-app coach.
+    ANTHROPIC_API_KEY: SecretStr | None = None
+    COACH_MODEL: str = "claude-sonnet-4-6"
+    COACH_MAX_TOKENS: int = 1500
+
     # Sentry
     SENTRY_ENABLED: bool = False
     SENTRY_DSN: str | None = None

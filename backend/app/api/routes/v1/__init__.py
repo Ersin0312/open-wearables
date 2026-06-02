@@ -4,6 +4,7 @@ from .api_keys import router as api_keys_router
 from .applications import router as applications_router
 from .archival import router as archival_router
 from .auth import router as auth_router
+from .coach import router as coach_router
 from .connections import router as connections_router
 from .dashboard import router as dashboard_router
 from .data_sources import router as data_sources_router
@@ -57,6 +58,7 @@ v1_router.include_router(data_sources_router, tags=["External: Data Sources"])
 v1_router.include_router(outgoing_webhooks_router, prefix="/webhooks", tags=["External: Webhooks"])
 v1_router.include_router(training_router, tags=["External: Training (manual)"])
 v1_router.include_router(supplements_router, tags=["External: Supplements (manual)"])
+v1_router.include_router(coach_router, tags=["External: Coach (AI)"])
 
 # --- Internal: dashboard endpoints ---
 v1_router.include_router(auth_router, prefix="/auth", tags=["Internal: Auth"])

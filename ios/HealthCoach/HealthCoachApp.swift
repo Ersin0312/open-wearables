@@ -17,6 +17,9 @@ struct RootView: View {
             DashboardView()
                 .tabItem { Label("Übersicht", systemImage: "square.grid.2x2.fill") }
 
+            CoachView()
+                .tabItem { Label("Coach", systemImage: "brain.head.profile") }
+
             TrainingView()
                 .tabItem { Label("Training", systemImage: "dumbbell.fill") }
 

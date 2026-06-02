@@ -185,6 +185,25 @@ struct APIClient {
         _ = try await sendDiscardingResult(req)
     }
 
+    // MARK: - Coach
+
+    func coachEnabled() async throws -> Bool {
+        let req = try makeRequest("/api/v1/users/\(AppConfig.userID)/coach/status")
+        struct S: Codable { let enabled: Bool }
+        return try await send(req, as: S.self).enabled
+    }
+
+    func coachChat(message: String, history: [(role: String, content: String)]) async throws -> String {
+        let payload: [String: Any] = [
+            "message": message,
+            "history": history.map { ["role": $0.role, "content": $0.content] },
+        ]
+        let body = try JSONSerialization.data(withJSONObject: payload)
+        let req = try makeRequest("/api/v1/users/\(AppConfig.userID)/coach/chat", method: "POST", body: body)
+        struct R: Codable { let reply: String }
+        return try await send(req, as: R.self).reply
+    }
+
     // MARK: - Body / Recovery / Trends
 
     func bodySummary() async throws -> BodySummary {
