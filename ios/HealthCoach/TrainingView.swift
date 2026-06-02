@@ -14,9 +14,9 @@ struct TrainingView: View {
             }
             .navigationTitle("Training")
             .task {
-                await vm.loadExercises()
                 await vm.loadActive()
                 await vm.loadHistory()
+                await vm.loadExercisesForActiveSession()
             }
         }
     }
@@ -41,10 +41,31 @@ struct StartSessionView: View {
             if !vm.pastSessions.isEmpty {
                 Section("Letzte Sessions") {
                     ForEach(vm.pastSessions.filter { $0.endedAt != nil }.prefix(10)) { s in
-                        HStack {
-                            Text(SPLIT_LABELS[s.splitTag] ?? s.splitTag).font(.headline)
-                            Spacer()
-                            Text(shortDate(s.startedAt)).font(.caption).foregroundStyle(.secondary)
+                        Menu {
+                            Button { Task { await vm.reopen(s) } } label: {
+                                Label("Wieder öffnen", systemImage: "arrow.uturn.backward")
+                            }
+                            Button { Task { await vm.duplicate(s) } } label: {
+                                Label("Duplizieren", systemImage: "plus.square.on.square")
+                            }
+                            Button(role: .destructive) { Task { await vm.deleteSession(s) } } label: {
+                                Label("Löschen", systemImage: "trash")
+                            }
+                        } label: {
+                            HStack {
+                                Text(SPLIT_LABELS[s.splitTag] ?? s.splitTag).font(.headline)
+                                Spacer()
+                                Text(shortDate(s.startedAt)).font(.caption).foregroundStyle(.secondary)
+                                Image(systemName: "ellipsis.circle").foregroundStyle(.secondary)
+                            }
+                        }
+                        .swipeActions {
+                            Button(role: .destructive) { Task { await vm.deleteSession(s) } } label: {
+                                Label("Löschen", systemImage: "trash")
+                            }
+                            Button { Task { await vm.duplicate(s) } } label: {
+                                Label("Dup.", systemImage: "plus.square.on.square")
+                            }.tint(.blue)
                         }
                     }
                 }
@@ -115,6 +136,7 @@ struct SetLoggerSection: View {
         Section("Satz erfassen") {
             if let ex = selected {
                 HStack {
+                    ExerciseThumb(imageURL: ex.imageURL, size: 56)
                     VStack(alignment: .leading) {
                         Text(ex.name).font(.subheadline)
                         Text("\(MUSCLE_LABELS[ex.primaryMuscleGroup] ?? "") · Satz #\(vm.nextSetNumber(for: ex.id))")
@@ -142,15 +164,49 @@ struct SetLoggerSection: View {
                 ForEach(vm.pickerGroups(search: search), id: \.muscle) { grp in
                     DisclosureGroup(grp.label) {
                         ForEach(grp.items) { ex in
-                            Button(ex.name) {
+                            Button {
                                 selected = ex; search = ""
+                            } label: {
+                                HStack(spacing: 10) {
+                                    ExerciseThumb(imageURL: ex.imageURL)
+                                    Text(ex.name).foregroundStyle(.primary)
+                                    Spacer()
+                                }
                             }
-                            .foregroundStyle(.primary)
                         }
                     }
                 }
             }
         }
+    }
+}
+
+/// Small thumbnail for a Gym80 machine image (served by the frontend container).
+struct ExerciseThumb: View {
+    let imageURL: String?
+    var size: CGFloat = 44
+
+    var body: some View {
+        Group {
+            if let path = imageURL, let url = URL(string: AppConfig.imageBaseURL.absoluteString + path) {
+                AsyncImage(url: url) { phase in
+                    switch phase {
+                    case .success(let img): img.resizable().scaledToFill()
+                    default: placeholder
+                    }
+                }
+            } else {
+                placeholder
+            }
+        }
+        .frame(width: size, height: size)
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+
+    private var placeholder: some View {
+        RoundedRectangle(cornerRadius: 8)
+            .fill(Color.gray.opacity(0.15))
+            .overlay(Image(systemName: "dumbbell").foregroundStyle(.secondary).font(.caption))
     }
 }
 

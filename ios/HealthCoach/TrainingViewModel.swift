@@ -26,12 +26,20 @@ final class TrainingViewModel: ObservableObject {
     func exerciseName(_ id: String) -> String { exerciseByID[id]?.name ?? "Unbekannt" }
     func muscle(_ id: String) -> String { exerciseByID[id]?.primaryMuscleGroup ?? "" }
 
-    func loadExercises() async {
-        guard exercises.isEmpty else { return }
+    /// Load the exercise library, optionally filtered to a split (push/pull/legs).
+    /// Custom split shows everything. Always keep a full lookup for name resolution.
+    func loadExercises(split: String? = nil) async {
         do {
-            let ex = try await APIClient.shared.exercises()
+            let filter = (split == "custom") ? nil : split
+            let ex = try await APIClient.shared.exercises(splitTag: filter)
             exercises = ex
-            exerciseByID = Dictionary(uniqueKeysWithValues: ex.map { ($0.id, $0) })
+            // Keep the name lookup complete (load all once) so history/sets resolve.
+            if exerciseByID.isEmpty {
+                let all = filter == nil ? ex : (try? await APIClient.shared.exercises()) ?? ex
+                exerciseByID = Dictionary(uniqueKeysWithValues: all.map { ($0.id, $0) })
+            } else {
+                for e in ex where exerciseByID[e.id] == nil { exerciseByID[e.id] = e }
+            }
         } catch { self.error = error.localizedDescription }
     }
 
@@ -66,7 +74,15 @@ final class TrainingViewModel: ObservableObject {
             activeSession = s
             sets = []
             UserDefaults.standard.set(s.id, forKey: kActiveSession)
+            await loadExercises(split: split)   // only this split's exercises
         } catch { self.error = error.localizedDescription }
+    }
+
+    /// When resuming a persisted session, load its split's exercises too.
+    func loadExercisesForActiveSession() async {
+        if let split = activeSession?.splitTag {
+            await loadExercises(split: split)
+        }
     }
 
     func end() async {
@@ -75,6 +91,33 @@ final class TrainingViewModel: ObservableObject {
         catch { self.error = error.localizedDescription }
         clearActive()
         await loadHistory()
+    }
+
+    func reopen(_ session: TrainingSession) async {
+        do {
+            let s = try await APIClient.shared.reopenSession(sessionID: session.id)
+            activeSessionID = s.id
+            UserDefaults.standard.set(s.id, forKey: kActiveSession)
+            await loadActive()
+            await loadExercises(split: s.splitTag)
+        } catch { self.error = error.localizedDescription }
+    }
+
+    func duplicate(_ session: TrainingSession) async {
+        do {
+            let s = try await APIClient.shared.duplicateSession(sessionID: session.id)
+            activeSessionID = s.id
+            UserDefaults.standard.set(s.id, forKey: kActiveSession)
+            await loadActive()
+            await loadExercises(split: s.splitTag)
+        } catch { self.error = error.localizedDescription }
+    }
+
+    func deleteSession(_ session: TrainingSession) async {
+        do {
+            try await APIClient.shared.deleteSession(sessionID: session.id)
+            await loadHistory()
+        } catch { self.error = error.localizedDescription }
     }
 
     private func clearActive() {

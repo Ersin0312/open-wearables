@@ -185,6 +185,21 @@ struct APIClient {
         _ = try await sendDiscardingResult(req)
     }
 
+    func reopenSession(sessionID: String) async throws -> TrainingSession {
+        let req = try makeRequest("/api/v1/users/\(AppConfig.userID)/training/sessions/\(sessionID)/reopen", method: "POST", body: Data("{}".utf8))
+        return try await send(req, as: TrainingSession.self)
+    }
+
+    func duplicateSession(sessionID: String) async throws -> TrainingSession {
+        let req = try makeRequest("/api/v1/users/\(AppConfig.userID)/training/sessions/\(sessionID)/duplicate", method: "POST", body: Data("{}".utf8))
+        return try await send(req, as: TrainingSession.self)
+    }
+
+    func deleteSession(sessionID: String) async throws {
+        let req = try makeRequest("/api/v1/users/\(AppConfig.userID)/training/sessions/\(sessionID)", method: "DELETE")
+        _ = try await sendDiscardingResult(req)
+    }
+
     // MARK: - Coach
 
     func coachEnabled() async throws -> Bool {
@@ -216,6 +231,13 @@ struct APIClient {
                  URLQueryItem(name: "end_date", value: endDate)]
         let req = try makeRequest("/api/v1/users/\(AppConfig.userID)/summaries/recovery", query: q)
         return try await send(req, as: RecoveryResponse.self).data
+    }
+
+    func sleep(startDate: String, endDate: String) async throws -> [SleepDay] {
+        let q = [URLQueryItem(name: "start_date", value: startDate),
+                 URLQueryItem(name: "end_date", value: endDate)]
+        let req = try makeRequest("/api/v1/users/\(AppConfig.userID)/summaries/sleep", query: q)
+        return try await send(req, as: SleepResponse.self).data
     }
 
     /// Weight + body-fat trend; pages at 100 (endpoint cap) until exhausted.

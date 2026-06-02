@@ -145,17 +145,42 @@ struct RecoveryDay: Codable, Identifiable, Hashable {
     let recoveryScore: Double?
     let restingHeartRateBpm: Double?
     let avgHrvSdnnMs: Double?
+    let avgSpo2Percent: Double?
 
     enum CodingKeys: String, CodingKey {
         case date
         case recoveryScore = "recovery_score"
         case restingHeartRateBpm = "resting_heart_rate_bpm"
         case avgHrvSdnnMs = "avg_hrv_sdnn_ms"
+        case avgSpo2Percent = "avg_spo2_percent"
     }
 }
 
 struct RecoveryResponse: Codable {
     let data: [RecoveryDay]
+}
+
+// MARK: - Sleep (WHOOP)
+
+struct SleepDay: Codable, Identifiable, Hashable {
+    var id: String { date }
+    let date: String
+    let durationMinutes: Double?
+    let efficiencyPercent: Double?
+    let avgHeartRateBpm: Double?
+    let avgRespiratoryRate: Double?
+
+    enum CodingKeys: String, CodingKey {
+        case date
+        case durationMinutes = "duration_minutes"
+        case efficiencyPercent = "efficiency_percent"
+        case avgHeartRateBpm = "avg_heart_rate_bpm"
+        case avgRespiratoryRate = "avg_respiratory_rate"
+    }
+}
+
+struct SleepResponse: Codable {
+    let data: [SleepDay]
 }
 
 // MARK: - Timeseries (weight / body fat trends)

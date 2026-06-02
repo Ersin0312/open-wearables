@@ -8,8 +8,11 @@ enum AppConfig {
     /// - Real iPhone: use the Mac's Tailscale IP so it works anywhere.
     #if targetEnvironment(simulator)
     static let baseURL = URL(string: "http://localhost:8000")!
+    /// Exercise images are served by the frontend container (port 3000).
+    static let imageBaseURL = URL(string: "http://localhost:3000")!
     #else
     static let baseURL = URL(string: "http://100.81.255.74:8000")!
+    static let imageBaseURL = URL(string: "http://100.81.255.74:3000")!
     #endif
 
     /// The single user this personal app tracks.
