@@ -136,6 +136,55 @@ struct APIClient {
         return try await send(req, as: Supplement.self)
     }
 
+    // MARK: - Training
+
+    func exercises(splitTag: String? = nil) async throws -> [Exercise] {
+        var q = [URLQueryItem(name: "user_id", value: AppConfig.userID)]
+        if let s = splitTag { q.append(URLQueryItem(name: "split_tag", value: s)) }
+        let req = try makeRequest("/api/v1/training/exercises", query: q)
+        return try await send(req, as: [Exercise].self)
+    }
+
+    func trainingSessions(limit: Int = 20) async throws -> [TrainingSession] {
+        let req = try makeRequest("/api/v1/users/\(AppConfig.userID)/training/sessions",
+                                  query: [URLQueryItem(name: "limit", value: String(limit))])
+        return try await send(req, as: [TrainingSession].self)
+    }
+
+    func startSession(splitTag: String) async throws -> TrainingSession {
+        let payload: [String: Any] = ["user_id": AppConfig.userID, "split_tag": splitTag]
+        let body = try JSONSerialization.data(withJSONObject: payload)
+        let req = try makeRequest("/api/v1/users/\(AppConfig.userID)/training/sessions", method: "POST", body: body)
+        return try await send(req, as: TrainingSession.self)
+    }
+
+    func endSession(sessionID: String) async throws -> TrainingSession {
+        let req = try makeRequest("/api/v1/users/\(AppConfig.userID)/training/sessions/\(sessionID)/end", method: "POST", body: Data("{}".utf8))
+        return try await send(req, as: TrainingSession.self)
+    }
+
+    func sets(sessionID: String) async throws -> [TrainingSet] {
+        let req = try makeRequest("/api/v1/users/\(AppConfig.userID)/training/sessions/\(sessionID)/sets")
+        return try await send(req, as: [TrainingSet].self)
+    }
+
+    func addSet(sessionID: String, exerciseID: String, setNumber: Int, reps: Int, weightKg: Double) async throws -> TrainingSet {
+        let payload: [String: Any] = [
+            "exercise_id": exerciseID,
+            "set_number": setNumber,
+            "reps": reps,
+            "weight_kg": weightKg,
+        ]
+        let body = try JSONSerialization.data(withJSONObject: payload)
+        let req = try makeRequest("/api/v1/users/\(AppConfig.userID)/training/sessions/\(sessionID)/sets", method: "POST", body: body)
+        return try await send(req, as: TrainingSet.self)
+    }
+
+    func deleteSet(sessionID: String, setID: String) async throws {
+        let req = try makeRequest("/api/v1/users/\(AppConfig.userID)/training/sessions/\(sessionID)/sets/\(setID)", method: "DELETE")
+        _ = try await sendDiscardingResult(req)
+    }
+
     private func sendDiscardingResult(_ req: URLRequest) async throws -> Data {
         let (data, resp): (Data, URLResponse)
         do {

@@ -14,6 +14,9 @@ struct RootView: View {
 
     var body: some View {
         TabView {
+            TrainingView()
+                .tabItem { Label("Training", systemImage: "dumbbell.fill") }
+
             SupplementsView()
                 .tabItem { Label("Supplements", systemImage: "pills.fill") }
 

@@ -58,6 +58,59 @@ struct SupplementIntake: Codable, Identifiable, Hashable {
     }
 }
 
+// MARK: - Training
+
+struct Exercise: Codable, Identifiable, Hashable {
+    let id: String
+    let name: String
+    let primaryMuscleGroup: String
+    let defaultSplitTag: String
+    let imageURL: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id, name
+        case primaryMuscleGroup = "primary_muscle_group"
+        case defaultSplitTag = "default_split_tag"
+        case imageURL = "image_url"
+    }
+}
+
+struct TrainingSession: Codable, Identifiable, Hashable {
+    let id: String
+    let startedAt: String
+    let endedAt: String?
+    let splitTag: String
+    let notes: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case startedAt = "started_at"
+        case endedAt = "ended_at"
+        case splitTag = "split_tag"
+        case notes
+    }
+}
+
+struct TrainingSet: Codable, Identifiable, Hashable {
+    let id: String
+    let sessionID: String
+    let exerciseID: String
+    let setNumber: Int
+    let reps: Int
+    let weightKg: String
+    let createdAt: String
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case sessionID = "session_id"
+        case exerciseID = "exercise_id"
+        case setNumber = "set_number"
+        case reps
+        case weightKg = "weight_kg"
+        case createdAt = "created_at"
+    }
+}
+
 // MARK: - Users
 
 struct UserItem: Codable, Identifiable {
