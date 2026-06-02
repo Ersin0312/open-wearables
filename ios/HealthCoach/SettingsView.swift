@@ -7,9 +7,8 @@ struct SettingsView: View {
     @State private var checking = false
 
     var body: some View {
-        NavigationStack {
-            Form {
-                Section("Backend") {
+        Form {
+            Section("Backend") {
                     LabeledContent("URL", value: AppConfig.baseURL.absoluteString)
                     LabeledContent("User", value: String(AppConfig.userID.prefix(8)) + "…")
                 }
@@ -37,9 +36,8 @@ struct SettingsView: View {
                     }
                     if let status { Text(status).font(.footnote).foregroundStyle(.secondary) }
                 }
-            }
-            .navigationTitle("Einstellungen")
         }
+        .navigationTitle("Einstellungen")
     }
 
     private func testConnection() async {

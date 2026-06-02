@@ -13,8 +13,10 @@ struct RootView: View {
     @State private var hasKey = Keychain.get(account: AppConfig.apiKeyKeychainAccount)?.isEmpty == false
 
     var body: some View {
+        // Exactly 5 tabs so iOS never collapses them into a "More" menu.
+        // Settings live behind a gear in the Übersicht toolbar.
         TabView {
-            DashboardView()
+            DashboardView(hasKey: $hasKey)
                 .tabItem { Label("Übersicht", systemImage: "square.grid.2x2.fill") }
 
             CoachView()
@@ -28,9 +30,6 @@ struct RootView: View {
 
             BodyView()
                 .tabItem { Label("Körper", systemImage: "figure.stand") }
-
-            SettingsView(hasKey: $hasKey)
-                .tabItem { Label("Mehr", systemImage: "gearshape.fill") }
         }
     }
 }

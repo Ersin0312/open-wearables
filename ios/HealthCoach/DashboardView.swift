@@ -62,10 +62,21 @@ final class DashboardViewModel: ObservableObject {
 
 struct DashboardView: View {
     @StateObject private var vm = DashboardViewModel()
+    @Binding var hasKey: Bool
+    @State private var showSettings = false
 
     var body: some View {
         NavigationStack {
             List {
+                if !hasKey {
+                    Section {
+                        Button {
+                            showSettings = true
+                        } label: {
+                            Label("API-Key eintragen, um Daten zu laden", systemImage: "key.fill")
+                        }
+                    }
+                }
                 Section("Recovery") {
                     if let r = vm.latestRecovery {
                         row("Recovery-Score", r.recoveryScore.map { "\(Int($0))%" } ?? "–")
@@ -96,7 +107,17 @@ struct DashboardView: View {
                 }
             }
             .navigationTitle("Übersicht")
-            .toolbar { Button { Task { await vm.load() } } label: { Image(systemName: "arrow.clockwise") } }
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button { showSettings = true } label: { Image(systemName: "gearshape.fill") }
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { Task { await vm.load() } } label: { Image(systemName: "arrow.clockwise") }
+                }
+            }
+            .sheet(isPresented: $showSettings) {
+                NavigationStack { SettingsView(hasKey: $hasKey) }
+            }
             .task { await vm.load() }
             .refreshable { await vm.load() }
         }
