@@ -45,6 +45,24 @@ final class SupplementsViewModel: ObservableObject {
         }
     }
 
+    func logSingle(supplement: Supplement, dose: Double) async {
+        do {
+            _ = try await APIClient.shared.addIntake(supplementID: supplement.id, dose: dose, unit: supplement.defaultUnit)
+            await load()
+        } catch {
+            self.error = error.localizedDescription
+        }
+    }
+
+    func deleteIntake(_ intake: SupplementIntake) async {
+        do {
+            try await APIClient.shared.deleteIntake(intakeID: intake.id)
+            await load()
+        } catch {
+            self.error = error.localizedDescription
+        }
+    }
+
     /// Per-supplement total taken today vs. recommended daily dose.
     struct DailyProgress: Identifiable {
         let id: String
@@ -73,13 +91,16 @@ final class SupplementsViewModel: ObservableObject {
 
 struct SupplementsView: View {
     @StateObject private var vm = SupplementsViewModel()
+    @State private var showLogSingle = false
+    @State private var showCreateStack = false
+    @State private var showCreateSupplement = false
 
     var body: some View {
         NavigationStack {
             Group {
                 if vm.loading && vm.stacks.isEmpty {
                     ProgressView("Lade…")
-                } else if let error = vm.error {
+                } else if let error = vm.error, vm.stacks.isEmpty {
                     ContentUnavailableView {
                         Label("Fehler", systemImage: "exclamationmark.triangle")
                     } description: {
@@ -93,7 +114,44 @@ struct SupplementsView: View {
             }
             .navigationTitle("Supplements")
             .toolbar {
-                Button { Task { await vm.load() } } label: { Image(systemName: "arrow.clockwise") }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Menu {
+                        Button { showLogSingle = true } label: { Label("Einzeln loggen", systemImage: "pills") }
+                        Button { showCreateStack = true } label: { Label("Stack anlegen", systemImage: "square.stack.3d.up") }
+                        Button { showCreateSupplement = true } label: { Label("Eigene NEM", systemImage: "plus.circle") }
+                    } label: { Image(systemName: "plus") }
+                }
+                ToolbarItem(placement: .topBarLeading) {
+                    Button { Task { await vm.load() } } label: { Image(systemName: "arrow.clockwise") }
+                }
+            }
+            .sheet(isPresented: $showLogSingle) {
+                LogSingleSheet(supplements: vm.supplements) { sup, dose in
+                    Task { await vm.logSingle(supplement: sup, dose: dose) }
+                }
+            }
+            .sheet(isPresented: $showCreateStack) {
+                CreateStackSheet(supplements: vm.supplements) { name, items in
+                    Task {
+                        do {
+                            _ = try await APIClient.shared.createStack(name: name, items: items)
+                            await vm.load()
+                        } catch { vm.error = error.localizedDescription }
+                    }
+                }
+            }
+            .sheet(isPresented: $showCreateSupplement) {
+                CreateSupplementSheet { draft in
+                    Task {
+                        do {
+                            _ = try await APIClient.shared.createSupplement(
+                                name: draft.name, brand: draft.brand, category: draft.category,
+                                defaultDose: draft.defaultDose, defaultUnit: draft.defaultUnit,
+                                recommendedDailyDose: draft.recommendedDailyDose, notes: draft.notes)
+                            await vm.load()
+                        } catch { vm.error = error.localizedDescription }
+                    }
+                }
             }
             .task { await vm.load() }
         }
@@ -147,14 +205,15 @@ struct SupplementsView: View {
                         Text("\(fmt(Double(intake.dose) ?? 0)) \(intake.unit)")
                             .foregroundStyle(.secondary)
                     }
+                    .swipeActions {
+                        Button(role: .destructive) {
+                            Task { await vm.deleteIntake(intake) }
+                        } label: { Label("Löschen", systemImage: "trash") }
+                    }
                 }
             }
         }
         .refreshable { await vm.load() }
-    }
-
-    private func fmt(_ v: Double) -> String {
-        v.rounded() == v ? String(Int(v)) : String(format: "%.1f", v)
     }
 
     private func color(for pct: Int) -> Color {
