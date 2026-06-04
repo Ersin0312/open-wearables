@@ -12,10 +12,21 @@ final class SupplementsViewModel: ObservableObject {
 
     func name(for id: String) -> String { supplementByID[id]?.name ?? "Unbekannt" }
 
-    private static func todayString() -> String {
-        let f = DateFormatter()
-        f.dateFormat = "yyyy-MM-dd"
-        return f.string(from: Date())
+    private static func dayString(_ offset: Int) -> String {
+        let d = Calendar.current.date(byAdding: .day, value: offset, to: Date())!
+        let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"
+        return f.string(from: d)
+    }
+
+    /// Keep only intakes whose taken_at falls on the LOCAL calendar today.
+    /// The backend stores UTC, so a query window of ±1 day plus local filtering
+    /// avoids losing entries logged near local midnight.
+    private static func isLocalToday(_ iso: String) -> Bool {
+        let fmt = ISO8601DateFormatter()
+        fmt.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let date = fmt.date(from: iso) ?? ISO8601DateFormatter().date(from: iso)
+        guard let d = date else { return false }
+        return Calendar.current.isDateInToday(d)
     }
 
     func load() async {
@@ -25,12 +36,12 @@ final class SupplementsViewModel: ObservableObject {
         do {
             async let sups = APIClient.shared.supplements()
             async let stk = APIClient.shared.stacks()
-            async let intk = APIClient.shared.intakes(startDate: Self.todayString(), endDate: Self.todayString())
+            async let intk = APIClient.shared.intakes(startDate: Self.dayString(-1), endDate: Self.dayString(1))
             let (s, k, i) = try await (sups, stk, intk)
             supplements = s
             supplementByID = Dictionary(uniqueKeysWithValues: s.map { ($0.id, $0) })
             stacks = k
-            todayIntakes = i
+            todayIntakes = i.filter { Self.isLocalToday($0.takenAt) }
         } catch {
             self.error = error.localizedDescription
         }

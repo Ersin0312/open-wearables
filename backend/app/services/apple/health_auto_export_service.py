@@ -29,6 +29,9 @@ from app.services.timeseries_service import timeseries_service
 _METRIC_NAME_TO_SERIES: dict[str, SeriesType] = {
     "weight_body_mass": SeriesType.weight,
     "body_fat_percentage": SeriesType.body_fat_percentage,
+    # Renpho writes Lean Body Mass to Apple Health; the body summary uses
+    # lean_body_mass as "muscle mass".
+    "lean_body_mass": SeriesType.lean_body_mass,
 }
 
 # Source string — must contain "apple" so the provider resolves to APPLE.

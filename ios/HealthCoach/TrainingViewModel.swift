@@ -25,6 +25,7 @@ final class TrainingViewModel: ObservableObject {
     private var exerciseByID: [String: Exercise] = [:]
     func exerciseName(_ id: String) -> String { exerciseByID[id]?.name ?? "Unbekannt" }
     func muscle(_ id: String) -> String { exerciseByID[id]?.primaryMuscleGroup ?? "" }
+    func imageURL(_ id: String) -> String? { exerciseByID[id]?.imageURL }
 
     /// Load the exercise library, optionally filtered to a split (push/pull/legs).
     /// Custom split shows everything. Always keep a full lookup for name resolution.

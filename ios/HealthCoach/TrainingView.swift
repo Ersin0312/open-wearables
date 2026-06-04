@@ -2,12 +2,13 @@ import SwiftUI
 
 struct TrainingView: View {
     @StateObject private var vm = TrainingViewModel()
+    @StateObject private var favorites = FavoritesStore()
 
     var body: some View {
         NavigationStack {
             Group {
                 if vm.activeSessionID != nil {
-                    ActiveSessionView(vm: vm)
+                    ActiveSessionView(vm: vm, favorites: favorites)
                 } else {
                     StartSessionView(vm: vm)
                 }
@@ -29,13 +30,12 @@ struct StartSessionView: View {
 
     var body: some View {
         List {
-            Section("Neue Session") {
-                ForEach(SPLIT_TAGS, id: \.self) { tag in
-                    Button {
-                        Task { await vm.start(split: tag) }
-                    } label: {
-                        Label(SPLIT_LABELS[tag] ?? tag, systemImage: "dumbbell.fill")
-                    }
+            Section {
+                Button {
+                    Task { await vm.start(split: "custom") }
+                } label: {
+                    Label("Neue Session starten", systemImage: "play.circle.fill")
+                        .font(.headline)
                 }
             }
             if !vm.pastSessions.isEmpty {
@@ -79,13 +79,13 @@ struct StartSessionView: View {
 
 struct ActiveSessionView: View {
     @ObservedObject var vm: TrainingViewModel
+    @ObservedObject var favorites: FavoritesStore
 
     var body: some View {
         List {
             Section {
                 HStack {
-                    Label("Live: \(SPLIT_LABELS[vm.activeSession?.splitTag ?? ""] ?? "Session")",
-                          systemImage: "circle.fill")
+                    Label("Live: Session", systemImage: "circle.fill")
                         .foregroundStyle(.green)
                         .font(.subheadline)
                     Spacer()
@@ -96,13 +96,16 @@ struct ActiveSessionView: View {
                 }
             }
 
-            SetLoggerSection(vm: vm)
+            SetLoggerSection(vm: vm, favorites: favorites)
 
             if !vm.groupedSets.isEmpty {
                 Section("Sätze in dieser Session") {
                     ForEach(vm.groupedSets) { group in
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(group.name).font(.subheadline).bold()
+                        VStack(alignment: .leading, spacing: 6) {
+                            HStack(spacing: 10) {
+                                ExerciseThumb(imageURL: vm.imageURL(group.id))
+                                Text(group.name).font(.subheadline).bold()
+                            }
                             ForEach(group.sets) { s in
                                 SetRow(set: s,
                                        onSave: { reps, w in Task { await vm.updateSet(s, reps: reps, weight: w) } },
@@ -120,10 +123,26 @@ struct ActiveSessionView: View {
 
 struct SetLoggerSection: View {
     @ObservedObject var vm: TrainingViewModel
+    @ObservedObject var favorites: FavoritesStore
     @State private var selected: Exercise?
     @State private var search = ""
     @State private var reps = ""
     @State private var weight = ""
+
+    private var favoriteExercises: [Exercise] {
+        let q = search.lowercased().split(separator: " ").map(String.init).filter { !$0.isEmpty }
+        return vm.exercises
+            .filter { favorites.isFavorite($0.id) }
+            .filter { ex in q.isEmpty || q.allSatisfy { ex.name.lowercased().contains($0) } }
+            .sorted { $0.name < $1.name }
+    }
+
+    private func addSet(_ ex: Exercise) {
+        if let r = Int(reps), let w = Double(weight.replacingOccurrences(of: ",", with: ".")) {
+            Task { await vm.addSet(exerciseID: ex.id, reps: r, weight: w) }
+            weight = ""  // keep reps, clear weight for fast entry
+        }
+    }
 
     var body: some View {
         Section("Satz erfassen") {
@@ -140,36 +159,57 @@ struct SetLoggerSection: View {
                 }
                 HStack {
                     TextField("Wdh.", text: $reps).keyboardType(.numberPad).frame(width: 70)
+                        .submitLabel(.next)
                     Text("×").foregroundStyle(.secondary)
                     TextField("kg", text: $weight).keyboardType(.decimalPad).frame(width: 80)
+                        .submitLabel(.done)
+                        .onSubmit { addSet(ex) }
                     Text("kg").foregroundStyle(.secondary)
                 }
-                Button {
-                    if let r = Int(reps), let w = Double(weight.replacingOccurrences(of: ",", with: ".")) {
-                        Task { await vm.addSet(exerciseID: ex.id, reps: r, weight: w) }
-                        weight = ""  // keep reps, clear weight for fast entry
-                    }
-                } label: { Label("Satz hinzufügen", systemImage: "plus.circle.fill") }
+                Button { addSet(ex) } label: { Label("Satz hinzufügen", systemImage: "plus.circle.fill") }
                 .disabled(Int(reps) == nil || Double(weight.replacingOccurrences(of: ",", with: ".")) == nil)
             } else {
-                TextField("Übung suchen (z. B. 3014, Brustpresse)…", text: $search)
+                TextField("Gerät suchen (z. B. 3014, Brustpresse)…", text: $search)
                     .autocorrectionDisabled()
+
+                // Favourites first, before the muscle-group categories.
+                if !favoriteExercises.isEmpty {
+                    Section {
+                        ForEach(favoriteExercises) { ex in pickerRow(ex) }
+                    } header: {
+                        Label("Favoriten", systemImage: "star.fill").foregroundStyle(.yellow)
+                    }
+                }
+
                 ForEach(vm.pickerGroups(search: search), id: \.muscle) { grp in
                     DisclosureGroup(grp.label) {
-                        ForEach(grp.items) { ex in
-                            Button {
-                                selected = ex; search = ""
-                            } label: {
-                                HStack(spacing: 10) {
-                                    ExerciseThumb(imageURL: ex.imageURL)
-                                    Text(ex.name).foregroundStyle(.primary)
-                                    Spacer()
-                                }
-                            }
-                        }
+                        ForEach(grp.items) { ex in pickerRow(ex) }
                     }
                 }
             }
+        }
+    }
+
+    @ViewBuilder
+    private func pickerRow(_ ex: Exercise) -> some View {
+        HStack(spacing: 10) {
+            Button {
+                selected = ex; search = ""
+            } label: {
+                HStack(spacing: 10) {
+                    ExerciseThumb(imageURL: ex.imageURL)
+                    Text(ex.name).foregroundStyle(.primary)
+                    Spacer()
+                }
+            }
+            .buttonStyle(.plain)
+            Button {
+                favorites.toggle(ex.id)
+            } label: {
+                Image(systemName: favorites.isFavorite(ex.id) ? "star.fill" : "star")
+                    .foregroundStyle(favorites.isFavorite(ex.id) ? .yellow : .secondary)
+            }
+            .buttonStyle(.borderless)
         }
     }
 }
@@ -184,21 +224,26 @@ struct SetRow: View {
     @State private var reps = ""
     @State private var weight = ""
 
+    private func save() {
+        if let r = Int(reps), let w = Double(weight.replacingOccurrences(of: ",", with: ".")) {
+            onSave(r, w)
+        }
+        editing = false
+    }
+
     var body: some View {
         HStack {
             Text("#\(set.setNumber)").font(.caption).foregroundStyle(.secondary)
             if editing {
-                TextField("Wdh.", text: $reps).keyboardType(.numberPad).frame(width: 50)
+                TextField("Wdh.", text: $reps).keyboardType(.numberPad).frame(width: 46)
+                    .submitLabel(.done).onSubmit(save)
                 Text("×").foregroundStyle(.secondary)
-                TextField("kg", text: $weight).keyboardType(.decimalPad).frame(width: 60)
+                TextField("kg", text: $weight).keyboardType(.decimalPad).frame(width: 56)
+                    .submitLabel(.done).onSubmit(save)
                 Spacer()
-                Button {
-                    if let r = Int(reps), let w = Double(weight.replacingOccurrences(of: ",", with: ".")) {
-                        onSave(r, w)
-                    }
-                    editing = false
-                } label: { Image(systemName: "checkmark.circle.fill").foregroundStyle(.green) }
+                Button(action: save) { Image(systemName: "checkmark.circle.fill").foregroundStyle(.green) }
                 Button { editing = false } label: { Image(systemName: "xmark.circle").foregroundStyle(.secondary) }
+                Button(role: .destructive, action: onDelete) { Image(systemName: "trash").foregroundStyle(.red) }
             } else {
                 Text("\(set.reps) reps × \(fmt(Double(set.weightKg) ?? 0)) kg")
                 Spacer()
@@ -207,6 +252,9 @@ struct SetRow: View {
                     weight = fmt(Double(set.weightKg) ?? 0)
                     editing = true
                 } label: { Image(systemName: "pencil").foregroundStyle(.secondary) }
+                Button(role: .destructive, action: onDelete) {
+                    Image(systemName: "trash").foregroundStyle(.red)
+                }
             }
         }
         .buttonStyle(.borderless)
@@ -216,14 +264,20 @@ struct SetRow: View {
     }
 }
 
-/// Small thumbnail for a Gym80 machine image (served by the frontend container).
+/// Small thumbnail for a Gym80 machine image. Tap to zoom to full screen.
 struct ExerciseThumb: View {
     let imageURL: String?
     var size: CGFloat = 44
+    @State private var zoomed = false
+
+    private var fullURL: URL? {
+        guard let path = imageURL else { return nil }
+        return URL(string: AppConfig.imageBaseURL.absoluteString + path)
+    }
 
     var body: some View {
         Group {
-            if let path = imageURL, let url = URL(string: AppConfig.imageBaseURL.absoluteString + path) {
+            if let url = fullURL {
                 AsyncImage(url: url) { phase in
                     switch phase {
                     case .success(let img): img.resizable().scaledToFill()
@@ -236,12 +290,55 @@ struct ExerciseThumb: View {
         }
         .frame(width: size, height: size)
         .clipShape(RoundedRectangle(cornerRadius: 8))
+        .contentShape(RoundedRectangle(cornerRadius: 8))
+        .onTapGesture { if fullURL != nil { zoomed = true } }
+        .sheet(isPresented: $zoomed) {
+            ImageLightbox(url: fullURL)
+        }
     }
 
     private var placeholder: some View {
         RoundedRectangle(cornerRadius: 8)
             .fill(Color.gray.opacity(0.15))
             .overlay(Image(systemName: "dumbbell").foregroundStyle(.secondary).font(.caption))
+    }
+}
+
+/// Full-screen zoomable image viewer (pinch + drag).
+struct ImageLightbox: View {
+    let url: URL?
+    @Environment(\.dismiss) private var dismiss
+    @State private var scale: CGFloat = 1
+
+    var body: some View {
+        ZStack {
+            Color.black.ignoresSafeArea()
+            if let url {
+                AsyncImage(url: url) { phase in
+                    switch phase {
+                    case .success(let img):
+                        img.resizable().scaledToFit()
+                            .scaleEffect(scale)
+                            .gesture(MagnificationGesture()
+                                .onChanged { scale = max(1, $0) }
+                                .onEnded { _ in withAnimation { scale = max(1, min(scale, 4)) } })
+                    case .failure:
+                        Image(systemName: "photo").font(.largeTitle).foregroundStyle(.secondary)
+                    default:
+                        ProgressView().tint(.white)
+                    }
+                }
+            }
+            VStack {
+                HStack {
+                    Spacer()
+                    Button { dismiss() } label: {
+                        Image(systemName: "xmark.circle.fill").font(.title).foregroundStyle(.white.opacity(0.8))
+                    }.padding()
+                }
+                Spacer()
+            }
+        }
     }
 }
 
