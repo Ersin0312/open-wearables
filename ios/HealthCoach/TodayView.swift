@@ -53,6 +53,7 @@ struct TodayView: View {
     @State private var showSupplements = false
     @State private var showWeekly = false
     @State private var briefExpanded = false
+    @State private var expandedAgenda: Set<String> = []
 
     var body: some View {
         NavigationStack {
@@ -276,14 +277,27 @@ struct TodayView: View {
         DashCard(title: "Tagesagenda", systemImage: "checklist") {
             agendaRow("training", "Training: \(PlanConfig.workoutForToday())",
                       done: vm.trainingLoggedToday)
-            agendaRow("protein", "Protein \(nutrition.totalProtein)/\(nutrition.proteinGoal) g",
-                      done: nutrition.totalProtein >= nutrition.proteinGoal)
+            expandableRow("protein", "Protein \(nutrition.totalProtein)/\(nutrition.proteinGoal) g",
+                          done: nutrition.totalProtein >= nutrition.proteinGoal) {
+                quickChips([("+20 g", 20), ("+30 g", 30), ("+40 g", 40), ("+50 g", 50)]) { g in
+                    Task { await nutrition.quickAddProtein(Double(g)) }
+                }
+            }
             agendaRow("calories", "Kalorien \(nutrition.totalKcal)/\(nutrition.calorieGoalText) kcal",
-                      done: nutrition.totalKcal > 0 && nutrition.totalKcal <= nutrition.calorieGoalValue)
+                      done: nutrition.totalKcal > 0 && nutrition.totalKcal <= nutrition.calorieGoalValue,
+                      action: { showNutrition = true })
             agendaRow("supps", "Supplements (\(vm.supplementsLoggedToday) heute)",
                       done: vm.supplementsLoggedToday > 0, action: { showSupplements = true })
-            agendaRow("water", "Wasser \(fmt(daily.waterLiters))/\(fmt(daily.waterGoal)) L",
-                      done: daily.waterLiters >= daily.waterGoal)
+            expandableRow("water", "Wasser \(fmt(daily.waterLiters))/\(fmt(daily.waterGoal)) L",
+                          done: daily.waterLiters >= daily.waterGoal) {
+                VStack(alignment: .leading, spacing: 8) {
+                    quickChips([("+250 ml", 250), ("+500 ml", 500), ("+750 ml", 750)]) { ml in
+                        daily.addWater(Double(ml) / 1000.0)
+                    }
+                    Button("Zurücksetzen") { daily.resetWater() }
+                        .font(.caption2).foregroundStyle(Theme.textSecondary)
+                }
+            }
             if Calendar.current.component(.weekday, from: Date()) == 1 {
                 agendaRow("waist", "Bauchumfang messen (Sonntag)", done: false)
             }
@@ -309,6 +323,50 @@ struct TodayView: View {
             }
         }
         .buttonStyle(.plain)
+    }
+
+    /// An agenda row that expands inline to reveal quick-add controls.
+    private func expandableRow<Content: View>(_ id: String, _ label: String, done: Bool,
+                                              @ViewBuilder content: () -> Content) -> some View {
+        let isOpen = expandedAgenda.contains(id)
+        return VStack(alignment: .leading, spacing: 10) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.18)) {
+                    if isOpen { expandedAgenda.remove(id) } else { expandedAgenda.insert(id) }
+                }
+            } label: {
+                HStack {
+                    Image(systemName: done ? "checkmark.circle.fill" : "circle")
+                        .foregroundStyle(done ? Theme.good : Theme.textSecondary)
+                    Text(label)
+                        .foregroundStyle(done ? Theme.textSecondary : Theme.textPrimary)
+                        .strikethrough(done, color: Theme.textSecondary)
+                    Spacer()
+                    Image(systemName: isOpen ? "chevron.up" : "chevron.down")
+                        .font(.caption2).foregroundStyle(Theme.textSecondary)
+                }
+            }
+            .buttonStyle(.plain)
+            if isOpen { content().padding(.leading, 28) }
+        }
+    }
+
+    /// A row of tappable quick-add chips. `options` is (label, amount); the
+    /// action receives the amount.
+    private func quickChips(_ options: [(String, Int)], action: @escaping (Int) -> Void) -> some View {
+        HStack(spacing: 8) {
+            ForEach(options, id: \.0) { opt in
+                Button { action(opt.1) } label: {
+                    Text(opt.0).font(.caption.weight(.semibold))
+                        .padding(.horizontal, 12).padding(.vertical, 8)
+                        .background(Theme.cardElevated)
+                        .foregroundStyle(Theme.accent)
+                        .clipShape(Capsule())
+                }
+                .buttonStyle(.plain)
+            }
+            Spacer()
+        }
     }
 
     private var recoveryCard: some View {

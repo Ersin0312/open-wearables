@@ -18,6 +18,8 @@ struct NemLibrarySheet: View {
     @State private var editTarget: Supplement?
     @State private var working: [Supplement] = []
     @State private var error: String?
+    @State private var forceTarget: Supplement?   // pending force-delete confirmation
+    @State private var forceMessage = ""
 
     private var filtered: [Supplement] {
         let q = search.trimmingCharacters(in: .whitespaces).lowercased()
@@ -52,6 +54,18 @@ struct NemLibrarySheet: View {
             .sheet(item: $editTarget) { sup in
                 EditSupplementSheet(supplement: sup) { onChanged() }
             }
+            .alert("Trotzdem löschen?", isPresented: Binding(
+                get: { forceTarget != nil },
+                set: { if !$0 { forceTarget = nil } }
+            )) {
+                Button("Abbrechen", role: .cancel) { forceTarget = nil }
+                Button("Löschen", role: .destructive) {
+                    if let s = forceTarget { Task { await delete(s, force: true) } }
+                    forceTarget = nil
+                }
+            } message: {
+                Text(forceMessage)
+            }
             .onAppear { working = supplements }
         }
     }
@@ -64,15 +78,27 @@ struct NemLibrarySheet: View {
         return parts.joined(separator: " · ")
     }
 
-    private func delete(_ s: Supplement) async {
+    private func delete(_ s: Supplement, force: Bool = false) async {
         do {
-            try await APIClient.shared.deleteSupplement(id: s.id)
+            try await APIClient.shared.deleteSupplement(id: s.id, force: force)
             working.removeAll { $0.id == s.id }
             onChanged()
             error = nil
+        } catch let APIError.http(code, body) where code == 409 {
+            // Still referenced — offer a force delete with the server's explanation.
+            forceMessage = serverDetail(body) ?? "Dieses NEM wird noch verwendet. Trotzdem löschen entfernt auch die zugehörigen Einträge."
+            forceTarget = s
         } catch {
-            self.error = error.localizedDescription   // surfaces the 409 "still used" message
+            self.error = error.localizedDescription
         }
+    }
+
+    /// Pull the human-readable `detail` out of the FastAPI error body.
+    private func serverDetail(_ body: String) -> String? {
+        guard let data = body.data(using: .utf8),
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let detail = obj["detail"] as? String else { return nil }
+        return detail
     }
 }
 

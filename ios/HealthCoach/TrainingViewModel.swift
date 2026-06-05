@@ -158,26 +158,14 @@ final class TrainingViewModel: ObservableObject {
         } catch { self.error = error.localizedDescription }
     }
 
-    /// Sets grouped by exercise, ordered by muscle region.
-    struct ExerciseGroup: Identifiable {
-        let id: String          // exercise id
-        let name: String
-        let muscle: String
-        let sets: [TrainingSet]
+    /// Chronological timeline of the active session's sets, with rest deltas.
+    var timeline: [TimelineEntry] {
+        buildTimeline(sets: sets, name: exerciseName, image: imageURL)
     }
 
-    var groupedSets: [ExerciseGroup] {
-        var byEx: [String: [TrainingSet]] = [:]
-        for s in sets { byEx[s.exerciseID, default: []].append(s) }
-        return byEx.map { (exID, exSets) in
-            ExerciseGroup(id: exID, name: exerciseName(exID), muscle: muscle(exID),
-                          sets: exSets.sorted { $0.setNumber < $1.setNumber })
-        }
-        .sorted { a, b in
-            let ia = MUSCLE_ORDER.firstIndex(of: a.muscle) ?? MUSCLE_ORDER.count
-            let ib = MUSCLE_ORDER.firstIndex(of: b.muscle) ?? MUSCLE_ORDER.count
-            return ia < ib
-        }
+    /// Total tonnage of the active session (Σ reps × weight).
+    var totalVolume: Double {
+        sets.reduce(0) { $0 + Double($1.reps) * (Double($1.weightKg) ?? 0) }
     }
 
     /// Exercises filtered by token-AND search, grouped by muscle for the picker.

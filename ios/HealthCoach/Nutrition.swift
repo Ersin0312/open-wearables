@@ -164,6 +164,13 @@ final class NutritionStore: ObservableObject {
         }
     }
 
+    /// Quick protein tally (e.g. a shake/scoop) — logs a minimal entry so it
+    /// flows into the same total. kcal = protein × 4 keeps calories honest.
+    func quickAddProtein(_ grams: Double) async {
+        await add(name: "Protein (Schnell)", grams: nil, kcal: grams * 4,
+                  protein: grams, carbs: 0, fat: 0, source: "manual")
+    }
+
     func delete(_ entry: NutritionEntry) async {
         do {
             try await APIClient.shared.deleteNutrition(id: entry.id)

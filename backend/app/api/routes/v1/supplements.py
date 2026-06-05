@@ -69,35 +69,53 @@ def update_supplement(
 
 
 @router.delete("/supplements/{supplement_id}", response_model=SupplementResponse)
-def delete_supplement(supplement_id: UUID, db: DbSession, _api_key: ApiKeyDep):
-    """Delete a library entry (seeded or custom). Blocked with a clear 409 when
-    the NEM is still referenced by logged intakes or stack items (FK RESTRICT),
-    so the user gets a helpful message instead of a raw 500."""
+def delete_supplement(
+    supplement_id: UUID,
+    db: DbSession,
+    _api_key: ApiKeyDep,
+    force: bool = Query(False, description="Also delete referencing intakes + stack items"),
+):
+    """Delete a library entry (seeded or custom). By default blocked with a clear
+    409 when the NEM is still referenced by logged intakes or stack items
+    (FK RESTRICT). With force=true, those references are deleted first so the
+    user can remove a NEM they no longer use (history for that NEM is dropped)."""
     existing = supplement_service.get(db, supplement_id, raise_404=True)
 
     intake_count = db.query(SupplementIntake).filter(
         SupplementIntake.supplement_id == supplement_id
     ).count()
-    if intake_count > 0:
-        raise HTTPException(
-            status_code=409,
-            detail=(
-                f"NEM wird noch von {intake_count} geloggten Einnahme(n) verwendet. "
-                "Lösche zuerst die Einträge in der Tagesansicht."
-            ),
-        )
-
     stack_item_count = db.query(SupplementStackItem).filter(
         SupplementStackItem.supplement_id == supplement_id
     ).count()
-    if stack_item_count > 0:
-        raise HTTPException(
-            status_code=409,
-            detail=(
-                f"NEM ist in {stack_item_count} Stack(s) enthalten. "
-                "Entferne es zuerst aus den Stacks."
-            ),
-        )
+
+    if not force:
+        if intake_count > 0:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    f"NEM wird noch von {intake_count} geloggten Einnahme(n) verwendet. "
+                    "Trotzdem löschen entfernt auch diese Einträge."
+                ),
+            )
+        if stack_item_count > 0:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    f"NEM ist in {stack_item_count} Stack(s) enthalten. "
+                    "Trotzdem löschen entfernt es auch dort."
+                ),
+            )
+    else:
+        # Cascade: drop referencing rows first so the FK RESTRICT passes.
+        if intake_count > 0:
+            db.query(SupplementIntake).filter(
+                SupplementIntake.supplement_id == supplement_id
+            ).delete(synchronize_session=False)
+        if stack_item_count > 0:
+            db.query(SupplementStackItem).filter(
+                SupplementStackItem.supplement_id == supplement_id
+            ).delete(synchronize_session=False)
+        db.commit()
 
     return supplement_service.delete(db, supplement_id, raise_404=True)
 

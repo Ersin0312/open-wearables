@@ -38,6 +38,13 @@ final class DailyStore: ObservableObject {
     }
     func isChecked(_ id: String) -> Bool { checked.contains(id) }
 
+    /// Add (or subtract) water in litres; never goes below zero.
+    func addWater(_ liters: Double) {
+        waterLiters = max(0, waterLiters + liters)
+        save()
+    }
+    func resetWater() { waterLiters = 0; save() }
+
     // Goals (defaults from the current phase; protein from phase config).
     var calorieGoalText: String { PlanConfig.currentPhase.calories }
     var proteinGoal: Int { PlanConfig.currentPhase.proteinGrams }

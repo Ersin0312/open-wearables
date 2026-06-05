@@ -27,6 +27,7 @@ struct TrainingView: View {
 
 struct StartSessionView: View {
     @ObservedObject var vm: TrainingViewModel
+    @State private var detailSession: TrainingSession?
 
     var body: some View {
         List {
@@ -40,8 +41,21 @@ struct StartSessionView: View {
             }
             if !vm.pastSessions.isEmpty {
                 Section("Letzte Sessions") {
-                    ForEach(vm.pastSessions.filter { $0.endedAt != nil }.prefix(10)) { s in
-                        Menu {
+                    ForEach(vm.pastSessions.filter { $0.endedAt != nil }.prefix(15)) { s in
+                        Button { detailSession = s } label: {
+                            HStack(spacing: 12) {
+                                Image(systemName: "calendar")
+                                    .foregroundStyle(.secondary).font(.subheadline)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(weekdayDateShort(s.startedAt)).font(.subheadline.weight(.semibold))
+                                        .foregroundStyle(.primary)
+                                    Text(clockTime(s.startedAt)).font(.caption).foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                                Image(systemName: "chevron.right").font(.caption2).foregroundStyle(.secondary)
+                            }
+                        }
+                        .contextMenu {
                             Button { Task { await vm.reopen(s) } } label: {
                                 Label("Wieder öffnen", systemImage: "arrow.uturn.backward")
                             }
@@ -51,20 +65,13 @@ struct StartSessionView: View {
                             Button(role: .destructive) { Task { await vm.deleteSession(s) } } label: {
                                 Label("Löschen", systemImage: "trash")
                             }
-                        } label: {
-                            HStack {
-                                Text(SPLIT_LABELS[s.splitTag] ?? s.splitTag).font(.headline)
-                                Spacer()
-                                Text(shortDate(s.startedAt)).font(.caption).foregroundStyle(.secondary)
-                                Image(systemName: "ellipsis.circle").foregroundStyle(.secondary)
-                            }
                         }
                         .swipeActions {
                             Button(role: .destructive) { Task { await vm.deleteSession(s) } } label: {
                                 Label("Löschen", systemImage: "trash")
                             }
-                            Button { Task { await vm.duplicate(s) } } label: {
-                                Label("Dup.", systemImage: "plus.square.on.square")
+                            Button { Task { await vm.reopen(s) } } label: {
+                                Label("Öffnen", systemImage: "arrow.uturn.backward")
                             }.tint(.blue)
                         }
                     }
@@ -72,6 +79,76 @@ struct StartSessionView: View {
             }
         }
         .refreshable { await vm.loadHistory() }
+        .sheet(item: $detailSession) { s in
+            SessionDetailView(session: s, vm: vm).preferredColorScheme(.dark)
+        }
+    }
+}
+
+/// Read-only breakdown of a past session: weekday/date/time header, duration +
+/// volume, and the chronological timeline (exercises with times + rest pauses).
+struct SessionDetailView: View {
+    let session: TrainingSession
+    @ObservedObject var vm: TrainingViewModel
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var sets: [TrainingSet] = []
+    @State private var loading = true
+
+    private var totalVolume: Double {
+        sets.reduce(0) { $0 + Double($1.reps) * (Double($1.weightKg) ?? 0) }
+    }
+    private var duration: String? {
+        guard let endIso = session.endedAt,
+              let start = parseTimestamp(session.startedAt),
+              let end = parseTimestamp(endIso) else { return nil }
+        return formatInterval(end.timeIntervalSince(start))
+    }
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(weekdayDateTime(session.startedAt)).font(.headline)
+                        HStack(spacing: 16) {
+                            stat("\(sets.count)", "Sätze")
+                            if let d = duration { stat(d, "Dauer") }
+                            stat("\(fmt(totalVolume)) kg", "Volumen")
+                        }
+                    }
+                }
+                if loading {
+                    HStack { ProgressView(); Text("Lade…").foregroundStyle(.secondary) }
+                } else if sets.isEmpty {
+                    Text("Keine Sätze in dieser Session.").foregroundStyle(.secondary)
+                } else {
+                    Section("Verlauf") {
+                        SessionTimelineView(entries: buildTimeline(sets: sets, name: vm.exerciseName, image: vm.imageURL))
+                    }
+                }
+            }
+            .navigationTitle("Session").navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) { Button("Fertig") { dismiss() } }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { Task { await vm.reopen(session); dismiss() } } label: {
+                        Label("Öffnen", systemImage: "arrow.uturn.backward")
+                    }
+                }
+            }
+            .task {
+                sets = (try? await APIClient.shared.sets(sessionID: session.id)) ?? []
+                loading = false
+            }
+        }
+    }
+
+    private func stat(_ value: String, _ label: String) -> some View {
+        VStack(alignment: .leading, spacing: 1) {
+            Text(value).font(.subheadline.weight(.semibold))
+            Text(label).font(.caption2).foregroundStyle(.secondary)
+        }
     }
 }
 
@@ -89,7 +166,14 @@ struct ActiveSessionView: View {
                         .foregroundStyle(.green)
                         .font(.subheadline)
                     Spacer()
+                    if let start = vm.activeSession?.startedAt {
+                        Text("seit \(clockTime(start))").font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+                HStack {
                     Text("\(vm.sets.count) Sätze").font(.caption).foregroundStyle(.secondary)
+                    Spacer()
+                    Text("Volumen \(fmt(vm.totalVolume)) kg").font(.caption).foregroundStyle(.secondary)
                 }
                 Button(role: .destructive) { Task { await vm.end() } } label: {
                     Label("Session beenden", systemImage: "stop.circle")
@@ -98,21 +182,12 @@ struct ActiveSessionView: View {
 
             SetLoggerSection(vm: vm, favorites: favorites)
 
-            if !vm.groupedSets.isEmpty {
-                Section("Sätze in dieser Session") {
-                    ForEach(vm.groupedSets) { group in
-                        VStack(alignment: .leading, spacing: 6) {
-                            HStack(spacing: 10) {
-                                ExerciseThumb(imageURL: vm.imageURL(group.id))
-                                Text(group.name).font(.subheadline).bold()
-                            }
-                            ForEach(group.sets) { s in
-                                SetRow(set: s,
-                                       onSave: { reps, w in Task { await vm.updateSet(s, reps: reps, weight: w) } },
-                                       onDelete: { Task { await vm.deleteSet(s) } })
-                            }
-                        }
-                    }
+            if !vm.sets.isEmpty {
+                Section("Verlauf dieser Session") {
+                    SessionTimelineView(
+                        entries: vm.timeline,
+                        onSave: { s, reps, w in Task { await vm.updateSet(s, reps: reps, weight: w) } },
+                        onDelete: { s in Task { await vm.deleteSet(s) } })
                 }
             }
         }
@@ -214,56 +289,6 @@ struct SetLoggerSection: View {
     }
 }
 
-/// One logged set with inline edit (pencil) + delete (swipe).
-struct SetRow: View {
-    let set: TrainingSet
-    let onSave: (Int, Double) -> Void
-    let onDelete: () -> Void
-
-    @State private var editing = false
-    @State private var reps = ""
-    @State private var weight = ""
-
-    private func save() {
-        if let r = Int(reps), let w = Double(weight.replacingOccurrences(of: ",", with: ".")) {
-            onSave(r, w)
-        }
-        editing = false
-    }
-
-    var body: some View {
-        HStack {
-            Text("#\(set.setNumber)").font(.caption).foregroundStyle(.secondary)
-            if editing {
-                TextField("Wdh.", text: $reps).keyboardType(.numberPad).frame(width: 46)
-                    .submitLabel(.done).onSubmit(save)
-                Text("×").foregroundStyle(.secondary)
-                TextField("kg", text: $weight).keyboardType(.decimalPad).frame(width: 56)
-                    .submitLabel(.done).onSubmit(save)
-                Spacer()
-                Button(action: save) { Image(systemName: "checkmark.circle.fill").foregroundStyle(.green) }
-                Button { editing = false } label: { Image(systemName: "xmark.circle").foregroundStyle(.secondary) }
-                Button(role: .destructive, action: onDelete) { Image(systemName: "trash").foregroundStyle(.red) }
-            } else {
-                Text("\(set.reps) reps × \(fmt(Double(set.weightKg) ?? 0)) kg")
-                Spacer()
-                Button {
-                    reps = String(set.reps)
-                    weight = fmt(Double(set.weightKg) ?? 0)
-                    editing = true
-                } label: { Image(systemName: "pencil").foregroundStyle(.secondary) }
-                Button(role: .destructive, action: onDelete) {
-                    Image(systemName: "trash").foregroundStyle(.red)
-                }
-            }
-        }
-        .buttonStyle(.borderless)
-        .swipeActions {
-            Button(role: .destructive, action: onDelete) { Label("Löschen", systemImage: "trash") }
-        }
-    }
-}
-
 /// Small thumbnail for a Gym80 machine image. Tap to zoom to full screen.
 struct ExerciseThumb: View {
     let imageURL: String?
@@ -340,15 +365,4 @@ struct ImageLightbox: View {
             }
         }
     }
-}
-
-func shortDate(_ iso: String) -> String {
-    let f = ISO8601DateFormatter()
-    f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-    let date = f.date(from: iso) ?? ISO8601DateFormatter().date(from: iso)
-    guard let d = date else { return "" }
-    let out = DateFormatter()
-    out.dateFormat = "EE dd.MM."
-    out.locale = Locale(identifier: "de_DE")
-    return out.string(from: d)
 }

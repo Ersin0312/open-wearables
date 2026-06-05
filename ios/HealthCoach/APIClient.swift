@@ -131,8 +131,9 @@ struct APIClient {
         return try await send(req, as: Supplement.self)
     }
 
-    func deleteSupplement(id: String) async throws {
-        let req = try makeRequest("/api/v1/supplements/\(id)", method: "DELETE")
+    func deleteSupplement(id: String, force: Bool = false) async throws {
+        let query = force ? [URLQueryItem(name: "force", value: "true")] : []
+        let req = try makeRequest("/api/v1/supplements/\(id)", method: "DELETE", query: query)
         _ = try await sendDiscardingResult(req)
     }
 
