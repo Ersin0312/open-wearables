@@ -45,10 +45,13 @@ final class TodayViewModel: ObservableObject {
 struct TodayView: View {
     @StateObject private var vm = TodayViewModel()
     @StateObject private var nutrition = NutritionStore()
+    @StateObject private var brief = CoachBriefStore()
     @ObservedObject var daily: DailyStore
     @Binding var hasKey: Bool
     @State private var showSettings = false
     @State private var showNutrition = false
+    @State private var showWeekly = false
+    @State private var briefExpanded = false
 
     var body: some View {
         NavigationStack {
@@ -61,6 +64,7 @@ struct TodayView: View {
                     }
 
                     statusLine
+                    briefingCard
                     northStar
                     nutritionCard
                     agenda
@@ -85,8 +89,17 @@ struct TodayView: View {
             .sheet(isPresented: $showNutrition) {
                 NutritionView(store: nutrition).preferredColorScheme(.dark)
             }
-            .task { await vm.load(); await nutrition.load() }
-            .refreshable { await vm.load(); await nutrition.load() }
+            .sheet(isPresented: $showWeekly) {
+                WeeklyReviewSheet(brief: brief, context: clientContext()).preferredColorScheme(.dark)
+            }
+            .task {
+                await vm.load(); await nutrition.load()
+                if hasKey { await brief.ensureMorning(context: clientContext()) }
+            }
+            .refreshable {
+                await vm.load(); await nutrition.load()
+                if hasKey { await brief.ensureMorning(context: clientContext()) }
+            }
         }
         .preferredColorScheme(.dark)
     }
@@ -98,6 +111,81 @@ struct TodayView: View {
             .font(.caption).fontWeight(.semibold)
             .foregroundStyle(Theme.textSecondary)
             .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    // Assemble the live metrics the brief endpoint needs (client-side context).
+    private func clientContext() -> String {
+        let p = PlanConfig.currentPhase
+        let cur = vm.weight7dAvg ?? vm.currentWeight
+        var l: [String] = []
+        l.append("Phase: Tag \(PlanConfig.currentDay) von \(PlanConfig.totalDays) · Phase \(p.index) (\(p.name)). Phasenziel \(Int(p.goalWeight)) kg, Endziel \(Int(PlanConfig.endGoalWeight)) kg. Start war \(fmt(PlanConfig.startWeight)) kg.")
+        if let c = cur { l.append("Gewicht 7-Tage-Mittel: \(fmt(c)) kg (noch \(fmt(c - p.goalWeight)) kg bis Phasenziel).") }
+        else { l.append("Gewicht: kein aktueller Wert synchronisiert.") }
+        if let r = vm.recovery {
+            let hrv = r.avgHrvSdnnMs.map { " HRV \(Int($0)) ms," } ?? ""
+            let rhr = r.restingHeartRateBpm.map { " Ruhepuls \(Int($0)) bpm," } ?? ""
+            l.append("Recovery heute: \(Int(r.recoveryScore ?? 0))%.\(hrv)\(rhr)")
+        } else { l.append("Recovery: heute noch nicht synchronisiert.") }
+        if let m = vm.sleepMinutes { l.append("Schlaf letzte Nacht: \(Int(m) / 60)h\(String(format: "%02d", Int(m) % 60)).") }
+        l.append("Heutiges Workout laut Plan: \(PlanConfig.workoutForToday()). Training heute \(vm.trainingLoggedToday ? "bereits geloggt" : "noch nicht geloggt").")
+        l.append("Ernährung heute bisher: \(nutrition.totalKcal) kcal von \(nutrition.calorieGoalText), \(nutrition.totalProtein) g von \(nutrition.proteinGoal) g Protein (\(nutrition.todayEntries.count) Einträge).")
+        l.append("Supplements heute geloggt: \(vm.supplementsLoggedToday).")
+        if let alert = PlanConfig.phaseTransitionAlert { l.append("Phasen-Hinweis: \(alert)") }
+        return l.joined(separator: "\n")
+    }
+
+    // Coach briefing — proactive morning brief (cached/day) + phase alert.
+    @ViewBuilder
+    private var briefingCard: some View {
+        DashCard(title: "Coach-Briefing", systemImage: "brain.head.profile") {
+            if let alert = PlanConfig.phaseTransitionAlert {
+                HStack(alignment: .top, spacing: 6) {
+                    Image(systemName: "flag.checkered").font(.caption).foregroundStyle(Theme.warn)
+                    Text(alert).font(.caption).foregroundStyle(Theme.warn)
+                }
+            }
+            if brief.loadingMorning && brief.morningBody == nil {
+                HStack(spacing: 8) { ProgressView().tint(Theme.accent); Text("Der Coach bereitet deinen Morgenbrief vor…").font(.subheadline).foregroundStyle(Theme.textSecondary) }
+            } else if let head = brief.morningHeadline {
+                Text(head).font(.headline).foregroundStyle(Theme.textPrimary)
+                    .fixedSize(horizontal: false, vertical: true)
+                if let body = brief.morningBody {
+                    if briefExpanded {
+                        BriefMarkdown(text: body)
+                    } else {
+                        Text(snippet(body)).font(.subheadline).foregroundStyle(Theme.textSecondary)
+                            .lineLimit(3)
+                    }
+                    Button(briefExpanded ? "Weniger" : "Mehr anzeigen") { withAnimation { briefExpanded.toggle() } }
+                        .font(.caption).foregroundStyle(Theme.accent)
+                }
+            } else if !hasKey {
+                Text("Trage deinen API-Key ein, dann erstellt der Coach hier deinen täglichen Morgenbrief.")
+                    .font(.subheadline).foregroundStyle(Theme.textSecondary)
+            } else {
+                Text(brief.error ?? "Noch kein Briefing — tippe auf Aktualisieren.")
+                    .font(.subheadline).foregroundStyle(brief.error == nil ? Theme.textSecondary : Theme.danger)
+            }
+
+            HStack(spacing: 10) {
+                Button {
+                    Task { await brief.ensureMorning(context: clientContext(), force: true) }
+                } label: {
+                    Label("Aktualisieren", systemImage: "arrow.clockwise").font(.caption)
+                }.buttonStyle(.bordered).tint(Theme.accent)
+                Button { showWeekly = true } label: {
+                    Label("Wochenreview", systemImage: "calendar").font(.caption)
+                }.buttonStyle(.bordered).tint(Theme.violet)
+            }
+            .disabled(!hasKey)
+        }
+    }
+
+    private func snippet(_ body: String) -> String {
+        body.replacingOccurrences(of: "*", with: "")
+            .replacingOccurrences(of: "#", with: "")
+            .replacingOccurrences(of: "- ", with: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     // North-Star: current 7d weight → phase goal → end goal, as a progress bar.

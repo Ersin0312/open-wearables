@@ -284,6 +284,15 @@ struct APIClient {
         return try await send(req, as: S.self).enabled
     }
 
+    func coachBrief(kind: String, clientContext: String) async throws -> (headline: String, body: String) {
+        let payload: [String: Any] = ["kind": kind, "client_context": clientContext]
+        let body = try JSONSerialization.data(withJSONObject: payload)
+        let req = try makeRequest("/api/v1/users/\(AppConfig.userID)/coach/brief", method: "POST", body: body)
+        struct R: Codable { let headline: String; let body: String }
+        let r = try await send(req, as: R.self)
+        return (r.headline, r.body)
+    }
+
     func coachChat(message: String, history: [(role: String, content: String)]) async throws -> String {
         let payload: [String: Any] = [
             "message": message,

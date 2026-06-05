@@ -55,6 +55,17 @@ enum PlanConfig {
         max(0, currentPhase.endDay - currentDay)
     }
 
+    /// Deterministic phase-transition alert (no AI, instant) — surfaced when a
+    /// phase change is near. nil when nothing noteworthy.
+    static var phaseTransitionAlert: String? {
+        guard daysLeftInPhase <= 10 else { return nil }
+        let p = currentPhase
+        if let next = phases.first(where: { $0.index == p.index + 1 }) {
+            return "Noch \(daysLeftInPhase) Tage in Phase \(p.index) (\(p.name)) → dann Phase \(next.index): \(next.name), Ziel \(Int(next.goalWeight)) kg, \(next.calories) kcal."
+        }
+        return "Noch \(daysLeftInPhase) Tage — letzte Phase (\(p.name)). Endspurt zum Ziel \(Int(endGoalWeight)) kg."
+    }
+
     /// Weekly training template (Mon…Sun).
     static func workoutForToday() -> String {
         switch Calendar.current.component(.weekday, from: Date()) {

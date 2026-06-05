@@ -31,6 +31,16 @@ class CoachStatusResponse(BaseModel):
     enabled: bool
 
 
+class CoachBriefRequest(BaseModel):
+    kind: str = "morning"            # "morning" | "weekly"
+    client_context: str = ""         # metrics the app already fetched, pre-formatted
+
+
+class CoachBriefResponse(BaseModel):
+    headline: str
+    body: str
+
+
 @router.get("/users/{user_id}/coach/status", response_model=CoachStatusResponse)
 def coach_status(user_id: UUID, _api_key: ApiKeyDep) -> CoachStatusResponse:
     """Whether the coach is configured (Anthropic key present)."""
@@ -58,3 +68,24 @@ async def coach_chat(
     except ValueError as e:
         raise HTTPException(status_code=502, detail=str(e))
     return CoachChatResponse(reply=reply)
+
+
+@router.post("/users/{user_id}/coach/brief", response_model=CoachBriefResponse)
+async def coach_brief(
+    user_id: UUID,
+    payload: CoachBriefRequest,
+    db: DbSession,
+    _api_key: ApiKeyDep,
+) -> CoachBriefResponse:
+    """Generate a proactive briefing (morning or weekly review). The client
+    supplies its already-fetched metrics; the backend adds training/supplement
+    context and calls Claude. Cache client-side to control token cost."""
+    if not coach_service.is_enabled():
+        raise HTTPException(status_code=503, detail="Coach nicht konfiguriert (ANTHROPIC_API_KEY fehlt).")
+    if payload.kind not in ("morning", "weekly"):
+        raise HTTPException(status_code=422, detail="kind muss 'morning' oder 'weekly' sein.")
+    try:
+        headline, body = await coach_service.brief(db, user_id, payload.kind, payload.client_context)
+    except ValueError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+    return CoachBriefResponse(headline=headline, body=body)

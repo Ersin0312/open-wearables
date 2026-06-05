@@ -38,6 +38,29 @@ Grenzen (immer einhalten): Du bist kein Arzt, keine Diagnosen, keine Medikamente
 Supplement-Empfehlungen im sicheren Rahmen (DGE/EFSA). Du änderst nichts selbst — du
 analysierst und empfiehlst; Änderungen macht der Nutzer in der App."""
 
+# --- Proactive briefing prompts ---
+
+_BRIEF_FORMAT = """# Ausgabeformat (strikt einhalten)
+Zeile 1: EINE knackige Headline (max. 12 Wörter, kein Markdown, keine Aufzählung).
+Danach eine Leerzeile, dann der Body in kurzem Markdown. Halte dich knapp und
+konkret — lieber 4-6 prägnante Bullets als ein Fließtext-Block. Keine Floskeln."""
+
+_MORNING_INSTRUCTION = """Erstelle den Morgenbrief für heute. Beziehe Recovery, Schlaf,
+heutiges geplantes Workout und die Ernährungsziele konkret ein. Struktur des Body:
+- **Fokus heute**: 1 Satz, was heute zählt (an Recovery + Phase ausgerichtet).
+- **Training**: heutige Einheit + ob Voll- oder Teillast je nach Recovery.
+- **Ernährung**: kcal/Protein-Ziel + 1 konkreter Tipp zum Erreichen.
+- **Achtung**: max. 1 Warnung (Schlafmangel, niedrige HRV, Phasen-Übergang) — nur wenn relevant.
+Wenn Daten fehlen, sag es kurz statt zu raten."""
+
+_WEEKLY_INSTRUCTION = """Erstelle das Wochenreview der letzten 7 Tage. Werte aus:
+Gewichtstrend vs. Phasenziel, Trainingsvolumen/-frequenz, Recovery-Schnitt,
+Ernährungs-Adherence (kcal/Protein). Struktur des Body:
+- **Bilanz**: Liegt der Nutzer auf Kurs zum Phasenziel? (mit Zahl belegen)
+- **Was lief gut** / **Was nachjustieren**: je 1-2 Bullets, datenbasiert.
+- **Diese Woche**: 1-2 konkrete, messbare Vorsätze.
+Sei ehrlich — wenn das Gewicht stagniert oder das Training ausfiel, benenne es."""
+
 
 class CoachService:
     def __init__(self, log: Logger):
@@ -120,6 +143,52 @@ class CoachService:
                 messages.append({"role": role, "content": content})
         messages.append({"role": "user", "content": message})
 
+        return await self._call_claude(system, messages)
+
+    async def brief(
+        self,
+        db: DbSession,
+        user_id: UUID,
+        kind: str,
+        client_context: str,
+    ) -> tuple[str, str]:
+        """Generate a proactive briefing (morning | weekly). The client supplies
+        its already-fetched metrics (recovery, sleep, weight, nutrition, phase);
+        the backend adds training/supplement context and asks Claude for a tight,
+        actionable brief. Returns (headline, body)."""
+        if not self.is_enabled():
+            raise ValueError("Coach ist nicht konfiguriert (ANTHROPIC_API_KEY fehlt).")
+
+        backend_context = self._gather_context(db, user_id)
+        instruction = _MORNING_INSTRUCTION if kind == "morning" else _WEEKLY_INSTRUCTION
+        system = (
+            f"{SYSTEM_PROMPT}\n\n{_BRIEF_FORMAT}\n\n"
+            f"# Vom Client gemeldete Tagesdaten\n{client_context}\n\n"
+            f"# Backend-Daten (Training/Supplements)\n{backend_context}"
+        )
+        messages = [{"role": "user", "content": instruction}]
+        text = await self._call_claude(system, messages)
+        return self._split_headline(text)
+
+    @staticmethod
+    def _split_headline(text: str) -> tuple[str, str]:
+        """First non-empty line is the headline; the rest is the body."""
+        lines = text.splitlines()
+        headline = ""
+        body_start = 0
+        for i, ln in enumerate(lines):
+            if ln.strip():
+                headline = ln.strip().lstrip("#").strip().strip("*").strip()
+                body_start = i + 1
+                break
+        body_lines = lines[body_start:]
+        # Drop a leading markdown horizontal rule the model sometimes adds.
+        while body_lines and (not body_lines[0].strip() or set(body_lines[0].strip()) <= {"-", "*", "_"}):
+            body_lines.pop(0)
+        body = "\n".join(body_lines).strip()
+        return (headline or "Dein Briefing", body or text.strip())
+
+    async def _call_claude(self, system: str, messages: list[dict]) -> str:
         payload = {
             "model": settings.COACH_MODEL,
             "max_tokens": settings.COACH_MAX_TOKENS,
@@ -139,7 +208,6 @@ class CoachService:
                 raise ValueError(f"Coach-API Fehler {resp.status_code}")
             data = resp.json()
 
-        # Concatenate text blocks from the response.
         parts = [b.get("text", "") for b in data.get("content", []) if b.get("type") == "text"]
         return "".join(parts).strip() or "(keine Antwort)"
 
