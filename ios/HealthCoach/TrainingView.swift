@@ -28,8 +28,10 @@ struct TrainingView: View {
 struct StartSessionView: View {
     @ObservedObject var vm: TrainingViewModel
     @StateObject private var cardio = CardioStore()
+    @StateObject private var pullups = PullupStore()
     @State private var detailDay: TrainingViewModel.DayGroup?
     @State private var showCardioLog = false
+    @State private var showPullupLog = false
 
     var body: some View {
         List {
@@ -39,6 +41,13 @@ struct StartSessionView: View {
                 } label: {
                     Label("Session starten / fortsetzen", systemImage: "play.circle.fill")
                         .font(.headline)
+                }
+                if vm.currentStreak > 0 {
+                    HStack(spacing: 6) {
+                        Image(systemName: "flame.fill").foregroundStyle(.orange)
+                        Text("\(vm.currentStreak) \(vm.currentStreak == 1 ? "Tag" : "Tage") in Folge trainiert")
+                            .font(.subheadline.weight(.semibold))
+                    }
                 }
             }
 
@@ -72,6 +81,31 @@ struct StartSessionView: View {
                 }
             } header: { Text("Cardio") }
 
+            Section {
+                Button { showPullupLog = true } label: {
+                    Label("Klimmzüge loggen", systemImage: "figure.strengthtraining.functional")
+                }
+                if pullups.bestBodyweight > 0 {
+                    HStack {
+                        Text("Bestleistung (Körpergewicht)").font(.caption).foregroundStyle(.secondary)
+                        Spacer()
+                        Text("\(pullups.bestBodyweight) Wdh.").font(.caption.weight(.semibold))
+                    }
+                }
+                ForEach(pullups.entries.prefix(5)) { p in
+                    HStack {
+                        Text("\(p.reps) Wdh." + (p.added > 0 ? " + \(fmt(p.added)) kg" : "")).font(.subheadline)
+                        Spacer()
+                        Text(weekdayDateShort(p.performedAt)).font(.caption2).foregroundStyle(.secondary)
+                    }
+                    .swipeActions {
+                        Button(role: .destructive) { Task { await pullups.delete(p) } } label: {
+                            Label("Löschen", systemImage: "trash")
+                        }
+                    }
+                }
+            } header: { Text("Klimmzüge") }
+
             let days = vm.historyByDay
             if !days.isEmpty {
                 Section("Trainingstage") {
@@ -100,13 +134,16 @@ struct StartSessionView: View {
                 }
             }
         }
-        .refreshable { await vm.loadHistory(); await cardio.load() }
-        .task { await cardio.load() }
+        .refreshable { await vm.loadHistory(); await cardio.load(); await pullups.load() }
+        .task { await cardio.load(); await pullups.load() }
         .sheet(item: $detailDay) { day in
             DayDetailView(day: day, vm: vm).preferredColorScheme(.dark)
         }
         .sheet(isPresented: $showCardioLog) {
             CardioLogSheet(store: cardio).preferredColorScheme(.dark)
+        }
+        .sheet(isPresented: $showPullupLog) {
+            PullupLogSheet(store: pullups).preferredColorScheme(.dark)
         }
     }
 }

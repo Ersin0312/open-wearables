@@ -66,7 +66,9 @@ struct BodyComposition {
 
 struct BodyView: View {
     @StateObject private var vm = BodyViewModel()
+    @StateObject private var blood = BloodworkStore()
     @State private var detailMetric: BodyMetricKind?
+    @State private var showBloodLog = false
 
     private var composition: BodyComposition? {
         guard let w = vm.currentWeight else { return nil }
@@ -87,6 +89,7 @@ struct BodyView: View {
                         trendCard(title: "Gewicht", unit: "kg", samples: vm.weightTrend, color: Theme.accent)
                         trendCard(title: "Körperfett", unit: "%", samples: vm.fatTrend, color: Theme.warn)
                     }
+                    bloodworkCard
                 }
                 .padding(16)
             }
@@ -96,10 +99,13 @@ struct BodyView: View {
             .toolbar { ToolbarItem(placement: .topBarTrailing) {
                 Button { Task { await vm.load() } } label: { Image(systemName: "arrow.clockwise") }
             } }
-            .task { await vm.load() }
-            .refreshable { await vm.load() }
+            .task { await vm.load(); await blood.load() }
+            .refreshable { await vm.load(); await blood.load() }
             .sheet(item: $detailMetric) { kind in
                 KPIDetailView(kind: kind, heightCm: vm.snapshot?.heightCm)
+            }
+            .sheet(isPresented: $showBloodLog) {
+                BloodworkLogSheet(store: blood).preferredColorScheme(.dark)
             }
         }
         .preferredColorScheme(.dark)
@@ -198,6 +204,32 @@ struct BodyView: View {
                 Text(remaining > 0 ? "Noch \(fmt(remaining)) kg bis zum Phasenziel" : "Phasenziel erreicht ✓")
                     .font(.caption2).foregroundStyle(remaining > 0 ? Theme.textSecondary : Theme.good)
             }
+        }
+    }
+
+    // Bloodwork — latest reading per marker, manual log (no scale source).
+    private var bloodworkCard: some View {
+        DashCard(title: "Blutwerte", systemImage: "drop.fill") {
+            if blood.latestPerMarker.isEmpty {
+                Text("Noch keine Blutwerte. Logge Laborwerte (z. B. Testosteron, Vitamin D), um den Trend zu verfolgen.")
+                    .font(.subheadline).foregroundStyle(Theme.textSecondary)
+            } else {
+                ForEach(blood.latestPerMarker.prefix(8)) { e in
+                    HStack {
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(e.marker).foregroundStyle(Theme.textPrimary).font(.subheadline)
+                            Text(weekdayDateShort(e.takenAt)).font(.caption2).foregroundStyle(Theme.textSecondary)
+                        }
+                        Spacer()
+                        Text("\(fmt(e.number)) \(e.unit)").font(.subheadline.weight(.semibold))
+                            .foregroundStyle(Theme.textPrimary)
+                    }
+                    .padding(.vertical, 2)
+                }
+            }
+            Button { showBloodLog = true } label: {
+                Label("Blutwert hinzufügen", systemImage: "plus").font(.caption)
+            }.buttonStyle(.bordered).tint(Theme.accent)
         }
     }
 

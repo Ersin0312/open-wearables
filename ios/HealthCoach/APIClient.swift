@@ -312,6 +312,48 @@ struct APIClient {
         _ = try await sendDiscardingResult(req)
     }
 
+    // MARK: - Pull-ups
+
+    func pullups(limit: Int = 100) async throws -> [PullupEntry] {
+        let req = try makeRequest("/api/v1/users/\(AppConfig.userID)/pullups",
+                                  query: [URLQueryItem(name: "limit", value: String(limit))])
+        return try await send(req, as: [PullupEntry].self)
+    }
+
+    func createPullup(reps: Int, addedWeightKg: Double?) async throws -> PullupEntry {
+        var payload: [String: Any] = ["reps": reps]
+        if let a = addedWeightKg, a > 0 { payload["added_weight_kg"] = a }
+        let body = try JSONSerialization.data(withJSONObject: payload)
+        let req = try makeRequest("/api/v1/users/\(AppConfig.userID)/pullups", method: "POST", body: body)
+        return try await send(req, as: PullupEntry.self)
+    }
+
+    func deletePullup(id: String) async throws {
+        let req = try makeRequest("/api/v1/users/\(AppConfig.userID)/pullups/\(id)", method: "DELETE")
+        _ = try await sendDiscardingResult(req)
+    }
+
+    // MARK: - Bloodwork
+
+    func bloodwork(limit: Int = 500) async throws -> [BloodworkEntry] {
+        let req = try makeRequest("/api/v1/users/\(AppConfig.userID)/bloodwork",
+                                  query: [URLQueryItem(name: "limit", value: String(limit))])
+        return try await send(req, as: [BloodworkEntry].self)
+    }
+
+    func createBloodwork(marker: String, value: Double, unit: String, takenAt: Date) async throws -> BloodworkEntry {
+        let iso = ISO8601DateFormatter().string(from: takenAt)
+        let payload: [String: Any] = ["marker": marker, "value": value, "unit": unit, "taken_at": iso]
+        let body = try JSONSerialization.data(withJSONObject: payload)
+        let req = try makeRequest("/api/v1/users/\(AppConfig.userID)/bloodwork", method: "POST", body: body)
+        return try await send(req, as: BloodworkEntry.self)
+    }
+
+    func deleteBloodwork(id: String) async throws {
+        let req = try makeRequest("/api/v1/users/\(AppConfig.userID)/bloodwork/\(id)", method: "DELETE")
+        _ = try await sendDiscardingResult(req)
+    }
+
     // MARK: - Coach
 
     func coachEnabled() async throws -> Bool {

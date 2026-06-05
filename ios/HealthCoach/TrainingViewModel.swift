@@ -190,6 +190,26 @@ final class TrainingViewModel: ObservableObject {
         .sorted { $0.id > $1.id }   // newest day first
     }
 
+    /// Consecutive training days up to today (or starting yesterday if today is
+    /// still untrained). A simple streak to reward consistency.
+    var currentStreak: Int {
+        let keys = Set(historyByDay.map { $0.id })
+        guard !keys.isEmpty else { return 0 }
+        let cal = Calendar.current
+        let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"
+        var day = cal.startOfDay(for: Date())
+        if !keys.contains(f.string(from: day)) {
+            day = cal.date(byAdding: .day, value: -1, to: day)!
+            if !keys.contains(f.string(from: day)) { return 0 }
+        }
+        var count = 0
+        while keys.contains(f.string(from: day)) {
+            count += 1
+            day = cal.date(byAdding: .day, value: -1, to: day)!
+        }
+        return count
+    }
+
     /// Chronological timeline of the active session's sets, with rest deltas.
     var timeline: [TimelineEntry] {
         buildTimeline(sets: sets, name: exerciseName, image: imageURL)
