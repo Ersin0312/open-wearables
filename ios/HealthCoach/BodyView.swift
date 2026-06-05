@@ -67,6 +67,7 @@ struct BodyComposition {
 struct BodyView: View {
     @StateObject private var vm = BodyViewModel()
     @StateObject private var blood = BloodworkStore()
+    @StateObject private var renpho = RenphoStore()
     @State private var detailMetric: BodyMetricKind?
     @State private var showBloodLog = false
 
@@ -89,6 +90,7 @@ struct BodyView: View {
                         trendCard(title: "Gewicht", unit: "kg", samples: vm.weightTrend, color: Theme.accent)
                         trendCard(title: "Körperfett", unit: "%", samples: vm.fatTrend, color: Theme.warn)
                     }
+                    RenphoCard(store: renpho)
                     bloodworkCard
                 }
                 .padding(16)
@@ -99,8 +101,8 @@ struct BodyView: View {
             .toolbar { ToolbarItem(placement: .topBarTrailing) {
                 Button { Task { await vm.load() } } label: { Image(systemName: "arrow.clockwise") }
             } }
-            .task { await vm.load(); await blood.load() }
-            .refreshable { await vm.load(); await blood.load() }
+            .task { await vm.load(); await blood.load(); await renpho.load() }
+            .refreshable { await vm.load(); await blood.load(); await renpho.load() }
             .sheet(item: $detailMetric) { kind in
                 KPIDetailView(kind: kind, heightCm: vm.snapshot?.heightCm)
             }

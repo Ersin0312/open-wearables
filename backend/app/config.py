@@ -53,6 +53,12 @@ class Settings(BaseSettings):
     COACH_MODEL: str = "claude-sonnet-4-6"
     COACH_MAX_TOKENS: int = 3000
 
+    # Renpho cloud sync (unofficial). Set RENPHO_EMAIL + RENPHO_PASSWORD in
+    # backend/config/.env to pull full body-composition scans (visceral fat,
+    # body water, bone mass, BMR, protein) that Apple Health cannot carry.
+    RENPHO_EMAIL: str | None = None
+    RENPHO_PASSWORD: SecretStr | None = None
+
     # Sentry
     SENTRY_ENABLED: bool = False
     SENTRY_DSN: str | None = None

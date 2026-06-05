@@ -333,6 +333,26 @@ struct APIClient {
         _ = try await sendDiscardingResult(req)
     }
 
+    // MARK: - Renpho
+
+    func renphoStatus() async throws -> Bool {
+        let req = try makeRequest("/api/v1/users/\(AppConfig.userID)/renpho/status")
+        struct S: Codable { let enabled: Bool }
+        return try await send(req, as: S.self).enabled
+    }
+
+    func renphoSync() async throws -> Int {
+        let req = try makeRequest("/api/v1/users/\(AppConfig.userID)/renpho/sync", method: "POST", body: Data("{}".utf8))
+        struct R: Codable { let new_scans: Int }
+        return try await send(req, as: R.self).new_scans
+    }
+
+    func bodyScans(limit: Int = 180) async throws -> [BodyScan] {
+        let req = try makeRequest("/api/v1/users/\(AppConfig.userID)/body-scans",
+                                  query: [URLQueryItem(name: "limit", value: String(limit))])
+        return try await send(req, as: [BodyScan].self)
+    }
+
     // MARK: - Bloodwork
 
     func bloodwork(limit: Int = 500) async throws -> [BloodworkEntry] {

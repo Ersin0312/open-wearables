@@ -9,6 +9,7 @@ from .connections import router as connections_router
 from .cardio import router as cardio_router
 from .health_extras import router as health_extras_router
 from .nutrition import router as nutrition_router
+from .renpho import router as renpho_router
 from .dashboard import router as dashboard_router
 from .data_sources import router as data_sources_router
 from .deprecated_webhooks import router as deprecated_webhooks_router
@@ -65,6 +66,7 @@ v1_router.include_router(coach_router, tags=["External: Coach (AI)"])
 v1_router.include_router(nutrition_router, tags=["External: Nutrition (manual)"])
 v1_router.include_router(cardio_router, tags=["External: Cardio (manual)"])
 v1_router.include_router(health_extras_router, tags=["External: Bloodwork & Pull-ups (manual)"])
+v1_router.include_router(renpho_router, tags=["External: Renpho Scale Sync"])
 
 # --- Internal: dashboard endpoints ---
 v1_router.include_router(auth_router, prefix="/auth", tags=["Internal: Auth"])

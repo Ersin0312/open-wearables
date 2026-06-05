@@ -2,6 +2,7 @@ from .api_key import ApiKey
 from .application import Application
 from .archival_setting import ArchivalSetting
 from .bloodwork_entry import BloodworkEntry
+from .body_scan import BodyScan
 from .cardio_session import CardioSession
 from .pullup_entry import PullupEntry
 from .data_point_series import DataPointSeries
@@ -37,6 +38,7 @@ __all__ = [
     "Application",
     "ArchivalSetting",
     "BloodworkEntry",
+    "BodyScan",
     "CardioSession",
     "PullupEntry",
     "Developer",
