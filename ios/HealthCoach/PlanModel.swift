@@ -21,7 +21,8 @@ enum PlanConfig {
     static let startWeight = 104.4      // kg
     static let endGoalWeight = 85.0     // kg
 
-    struct Phase {
+    struct Phase: Identifiable, Equatable {
+        var id: Int { index }
         let index: Int
         let name: String
         let startDay: Int          // 1-based
@@ -31,7 +32,9 @@ enum PlanConfig {
         let proteinGrams: Int
     }
 
-    static let phases: [Phase] = [
+    /// Hardcoded defaults from the brief. Live values come from `phases`, which
+    /// overlays any user edits stored in UserDefaults.
+    static let defaultPhases: [Phase] = [
         Phase(index: 1, name: "Aggressiver Cut", startDay: 1, endDay: 120,
               goalWeight: 92, calories: "2400–2500", proteinGrams: 220),
         Phase(index: 2, name: "Moderater Cut", startDay: 121, endDay: 240,
@@ -39,6 +42,37 @@ enum PlanConfig {
         Phase(index: 3, name: "Lean Maintenance", startDay: 241, endDay: 365,
               goalWeight: 85, calories: "2700–2900", proteinGrams: 200),
     ]
+
+    /// Live phases: defaults with any user overrides applied. Same shape as
+    /// before, so all call sites (currentPhase.goalWeight …) keep working.
+    static var phases: [Phase] {
+        let ud = UserDefaults.standard
+        return defaultPhases.map { p in
+            let goal = ud.object(forKey: "phase_\(p.index)_goal") as? Double ?? p.goalWeight
+            let cal = ud.string(forKey: "phase_\(p.index)_cal") ?? p.calories
+            let pro = ud.object(forKey: "phase_\(p.index)_protein") as? Int ?? p.proteinGrams
+            return Phase(index: p.index, name: p.name, startDay: p.startDay, endDay: p.endDay,
+                         goalWeight: goal, calories: cal, proteinGrams: pro)
+        }
+    }
+
+    /// Persist an edited phase. Pass nil for fields left at default.
+    static func savePhase(index: Int, goalWeight: Double, calories: String, proteinGrams: Int) {
+        let ud = UserDefaults.standard
+        ud.set(goalWeight, forKey: "phase_\(index)_goal")
+        ud.set(calories, forKey: "phase_\(index)_cal")
+        ud.set(proteinGrams, forKey: "phase_\(index)_protein")
+    }
+
+    /// Reset every phase override back to the brief defaults.
+    static func resetPhases() {
+        let ud = UserDefaults.standard
+        for p in defaultPhases {
+            ud.removeObject(forKey: "phase_\(p.index)_goal")
+            ud.removeObject(forKey: "phase_\(p.index)_cal")
+            ud.removeObject(forKey: "phase_\(p.index)_protein")
+        }
+    }
 
     /// 1-based current day on the journey.
     static var currentDay: Int {

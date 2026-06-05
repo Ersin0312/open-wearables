@@ -59,7 +59,7 @@ struct BodyView: View {
                     }
                 }
             }
-            .navigationTitle("Körper")
+            .navigationTitle("Fortschritt")
             .toolbar { Button { Task { await vm.load() } } label: { Image(systemName: "arrow.clockwise") } }
             .task { await vm.load() }
             .refreshable { await vm.load() }

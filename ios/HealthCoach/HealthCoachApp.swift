@@ -14,22 +14,23 @@ struct RootView: View {
     @StateObject private var daily = DailyStore()
 
     var body: some View {
-        // Exactly 5 tabs so iOS never collapses them into a "More" menu.
+        // Exactly 5 tabs (Arda IA) so iOS never collapses them into a "More"
+        // menu. Supplements moved to a sheet reachable from HEUTE's agenda.
         TabView {
             TodayView(daily: daily, hasKey: $hasKey)
                 .tabItem { Label("Heute", systemImage: "sun.max.fill") }
 
-            CoachView()
-                .tabItem { Label("Coach", systemImage: "brain.head.profile") }
+            PlanView()
+                .tabItem { Label("Plan", systemImage: "map.fill") }
 
             TrainingView()
                 .tabItem { Label("Training", systemImage: "dumbbell.fill") }
 
-            SupplementsView()
-                .tabItem { Label("Supplements", systemImage: "pills.fill") }
-
             BodyView()
-                .tabItem { Label("Körper", systemImage: "figure.stand") }
+                .tabItem { Label("Fortschritt", systemImage: "chart.line.uptrend.xyaxis") }
+
+            CoachView()
+                .tabItem { Label("Coach", systemImage: "brain.head.profile") }
         }
     }
 }

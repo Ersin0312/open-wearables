@@ -50,6 +50,7 @@ struct TodayView: View {
     @Binding var hasKey: Bool
     @State private var showSettings = false
     @State private var showNutrition = false
+    @State private var showSupplements = false
     @State private var showWeekly = false
     @State private var briefExpanded = false
 
@@ -88,6 +89,9 @@ struct TodayView: View {
             }
             .sheet(isPresented: $showNutrition) {
                 NutritionView(store: nutrition).preferredColorScheme(.dark)
+            }
+            .sheet(isPresented: $showSupplements) {
+                SupplementsView().preferredColorScheme(.dark)
             }
             .sheet(isPresented: $showWeekly) {
                 WeeklyReviewSheet(brief: brief, context: clientContext()).preferredColorScheme(.dark)
@@ -277,7 +281,7 @@ struct TodayView: View {
             agendaRow("calories", "Kalorien \(nutrition.totalKcal)/\(nutrition.calorieGoalText) kcal",
                       done: nutrition.totalKcal > 0 && nutrition.totalKcal <= nutrition.calorieGoalValue)
             agendaRow("supps", "Supplements (\(vm.supplementsLoggedToday) heute)",
-                      done: vm.supplementsLoggedToday > 0)
+                      done: vm.supplementsLoggedToday > 0, action: { showSupplements = true })
             agendaRow("water", "Wasser \(fmt(daily.waterLiters))/\(fmt(daily.waterGoal)) L",
                       done: daily.waterLiters >= daily.waterGoal)
             if Calendar.current.component(.weekday, from: Date()) == 1 {
@@ -287,10 +291,10 @@ struct TodayView: View {
         }
     }
 
-    private func agendaRow(_ id: String, _ label: String, done: Bool) -> some View {
+    private func agendaRow(_ id: String, _ label: String, done: Bool, action: (() -> Void)? = nil) -> some View {
         let checked = done || daily.isChecked(id)
         return Button {
-            daily.toggle(id)
+            if let action { action() } else { daily.toggle(id) }
         } label: {
             HStack {
                 Image(systemName: checked ? "checkmark.circle.fill" : "circle")
@@ -299,6 +303,9 @@ struct TodayView: View {
                     .foregroundStyle(checked ? Theme.textSecondary : Theme.textPrimary)
                     .strikethrough(checked, color: Theme.textSecondary)
                 Spacer()
+                if action != nil {
+                    Image(systemName: "chevron.right").font(.caption2).foregroundStyle(Theme.textSecondary)
+                }
             }
         }
         .buttonStyle(.plain)
