@@ -181,6 +181,8 @@ struct MuscleGroupedView: View {
     let name: (String) -> String
     let image: (String) -> String?
     let muscle: (String) -> String
+    var onSave: ((TrainingSet, Int, Double) -> Void)? = nil
+    var onDelete: ((TrainingSet) -> Void)? = nil
 
     /// setID → rest before it (global chronological gap).
     private var restMap: [String: TimeInterval] {
@@ -236,22 +238,67 @@ struct MuscleGroupedView: View {
                             }
                         }
                         ForEach(ex.sets) { s in
-                            HStack(spacing: 8) {
-                                Text("#\(s.setNumber)").font(.caption).foregroundStyle(.secondary)
-                                    .frame(width: 28, alignment: .leading)
-                                Text("\(s.reps) × \(fmt(Double(s.weightKg) ?? 0)) kg").font(.subheadline)
-                                Spacer()
-                                if let r = restMap[s.id] {
-                                    Label(formatInterval(r), systemImage: "pause.circle")
-                                        .font(.caption2).foregroundStyle(.secondary)
-                                }
-                                Text(clockTime(s.createdAt)).font(.caption2).foregroundStyle(.secondary)
-                                    .frame(width: 42, alignment: .trailing)
-                            }
+                            MuscleGroupedSetRow(set: s, rest: restMap[s.id], onSave: onSave, onDelete: onDelete)
                         }
                     }
                     .padding(.vertical, 2)
                 }
+            }
+        }
+    }
+}
+
+/// A set row inside the muscle-grouped breakdown: reps×kg + rest + clock time,
+/// with optional inline edit (pencil) and swipe-to-delete when handlers exist.
+private struct MuscleGroupedSetRow: View {
+    let set: TrainingSet
+    let rest: TimeInterval?
+    let onSave: ((TrainingSet, Int, Double) -> Void)?
+    let onDelete: ((TrainingSet) -> Void)?
+
+    @State private var editing = false
+    @State private var reps = ""
+    @State private var weight = ""
+
+    private func commit() {
+        if let r = Int(reps), let w = Double(weight.replacingOccurrences(of: ",", with: ".")) {
+            onSave?(set, r, w)
+        }
+        editing = false
+    }
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Text("#\(set.setNumber)").font(.caption).foregroundStyle(.secondary)
+                .frame(width: 28, alignment: .leading)
+            if editing {
+                TextField("Wdh.", text: $reps).keyboardType(.numberPad).frame(width: 46)
+                    .submitLabel(.done).onSubmit(commit)
+                Text("×").foregroundStyle(.secondary)
+                TextField("kg", text: $weight).keyboardType(.decimalPad).frame(width: 56)
+                    .submitLabel(.done).onSubmit(commit)
+                Spacer()
+                Button(action: commit) { Image(systemName: "checkmark.circle.fill").foregroundStyle(.green) }
+                Button { editing = false } label: { Image(systemName: "xmark.circle").foregroundStyle(.secondary) }
+            } else {
+                Text("\(set.reps) × \(fmt(Double(set.weightKg) ?? 0)) kg").font(.subheadline)
+                Spacer()
+                if let r = rest {
+                    Label(formatInterval(r), systemImage: "pause.circle").font(.caption2).foregroundStyle(.secondary)
+                }
+                Text(clockTime(set.createdAt)).font(.caption2).foregroundStyle(.secondary)
+                    .frame(width: 42, alignment: .trailing)
+                if onSave != nil {
+                    Button {
+                        reps = String(set.reps); weight = fmt(Double(set.weightKg) ?? 0); editing = true
+                    } label: { Image(systemName: "pencil").foregroundStyle(.secondary) }
+                }
+            }
+        }
+        .buttonStyle(.borderless)
+        .swipeActions {
+            if let onDelete {
+                Button(role: .destructive) { onDelete(set) } label: { Label("Löschen", systemImage: "trash") }
             }
         }
     }

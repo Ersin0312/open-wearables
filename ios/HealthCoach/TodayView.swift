@@ -279,8 +279,8 @@ struct TodayView: View {
                       done: vm.trainingLoggedToday)
             expandableRow("protein", "Protein \(nutrition.totalProtein)/\(nutrition.proteinGoal) g",
                           done: nutrition.totalProtein >= nutrition.proteinGoal) {
-                quickChips([("+20 g", 20), ("+30 g", 30), ("+40 g", 40), ("+50 g", 50)]) { g in
-                    Task { await nutrition.quickAddProtein(Double(g)) }
+                ManualAddField(placeholder: "Menge", unit: "g", hint: "Eingegebene Gramm werden zum Tagesprotein addiert.") { g in
+                    Task { await nutrition.quickAddProtein(g) }
                 }
             }
             agendaRow("calories", "Kalorien \(nutrition.totalKcal)/\(nutrition.calorieGoalText) kcal",
@@ -291,8 +291,8 @@ struct TodayView: View {
             expandableRow("water", "Wasser \(fmt(daily.waterLiters))/\(fmt(daily.waterGoal)) L",
                           done: daily.waterLiters >= daily.waterGoal) {
                 VStack(alignment: .leading, spacing: 8) {
-                    quickChips([("+250 ml", 250), ("+500 ml", 500), ("+750 ml", 750)]) { ml in
-                        daily.addWater(Double(ml) / 1000.0)
+                    ManualAddField(placeholder: "Menge", unit: "ml", hint: "Eingegebene Milliliter werden zur Tagesmenge addiert.") { ml in
+                        daily.addWater(ml / 1000.0)
                     }
                     Button("Zurücksetzen") { daily.resetWater() }
                         .font(.caption2).foregroundStyle(Theme.textSecondary)
@@ -351,24 +351,6 @@ struct TodayView: View {
         }
     }
 
-    /// A row of tappable quick-add chips. `options` is (label, amount); the
-    /// action receives the amount.
-    private func quickChips(_ options: [(String, Int)], action: @escaping (Int) -> Void) -> some View {
-        HStack(spacing: 8) {
-            ForEach(options, id: \.0) { opt in
-                Button { action(opt.1) } label: {
-                    Text(opt.0).font(.caption.weight(.semibold))
-                        .padding(.horizontal, 12).padding(.vertical, 8)
-                        .background(Theme.cardElevated)
-                        .foregroundStyle(Theme.accent)
-                        .clipShape(Capsule())
-                }
-                .buttonStyle(.plain)
-            }
-            Spacer()
-        }
-    }
-
     private var recoveryCard: some View {
         Group {
             if let i = RecoveryInterpretation.make(recovery: vm.recovery, sleepMinutes: vm.sleepMinutes) {
@@ -386,6 +368,43 @@ struct TodayView: View {
                         .font(.subheadline).foregroundStyle(Theme.textSecondary)
                 }
             }
+        }
+    }
+}
+
+/// A manual numeric entry for agenda quick-logs (water ml, protein g). The user
+/// types the amount and taps Hinzufügen — no preset suggestions.
+struct ManualAddField: View {
+    let placeholder: String
+    let unit: String
+    var hint: String? = nil
+    let onAdd: (Double) -> Void
+    @State private var text = ""
+
+    private var value: Double? {
+        let v = Double(text.replacingOccurrences(of: ",", with: "."))
+        return (v ?? 0) > 0 ? v : nil
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 8) {
+                TextField(placeholder, text: $text)
+                    .keyboardType(.decimalPad)
+                    .foregroundStyle(Theme.textPrimary)
+                    .padding(10)
+                    .background(Theme.cardElevated)
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                Text(unit).foregroundStyle(Theme.textSecondary)
+                Button { if let v = value { onAdd(v); text = "" } } label: {
+                    Label("Hinzufügen", systemImage: "plus")
+                        .font(.caption.weight(.semibold))
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(Theme.accent)
+                .disabled(value == nil)
+            }
+            if let hint { Text(hint).font(.caption2).foregroundStyle(Theme.textSecondary) }
         }
     }
 }

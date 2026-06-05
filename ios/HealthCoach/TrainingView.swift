@@ -113,7 +113,16 @@ struct DayDetailView: View {
                 } else if sets.isEmpty {
                     Text("Keine Sätze an diesem Tag.").foregroundStyle(.secondary)
                 } else {
-                    MuscleGroupedView(sets: sets, name: vm.exerciseName, image: vm.imageURL, muscle: vm.muscle)
+                    MuscleGroupedView(
+                        sets: sets, name: vm.exerciseName, image: vm.imageURL, muscle: vm.muscle,
+                        onSave: { s, reps, w in Task { await editSet(s, reps: reps, weight: w) } },
+                        onDelete: { s in Task { await removeSet(s) } })
+
+                    Section {
+                        Button(role: .destructive) { Task { await deleteDay() } } label: {
+                            Label("Trainingstag löschen", systemImage: "trash")
+                        }
+                    }
                 }
             }
             .navigationTitle("Trainingstag").navigationBarTitleDisplayMode(.inline)
@@ -127,16 +136,33 @@ struct DayDetailView: View {
                     }
                 }
             }
-            .task {
-                // Merge sets across every session that started this day.
-                var all: [TrainingSet] = []
-                for s in day.sessions {
-                    if let part = try? await APIClient.shared.sets(sessionID: s.id) { all.append(contentsOf: part) }
-                }
-                sets = all
-                loading = false
-            }
+            .task { await reload() }
         }
+    }
+
+    private func reload() async {
+        // Merge sets across every session that started this day.
+        var all: [TrainingSet] = []
+        for s in day.sessions {
+            if let part = try? await APIClient.shared.sets(sessionID: s.id) { all.append(contentsOf: part) }
+        }
+        sets = all
+        loading = false
+    }
+
+    private func editSet(_ s: TrainingSet, reps: Int, weight: Double) async {
+        _ = try? await APIClient.shared.updateSet(sessionID: s.sessionID, setID: s.id, reps: reps, weightKg: weight)
+        await reload()
+    }
+
+    private func removeSet(_ s: TrainingSet) async {
+        try? await APIClient.shared.deleteSet(sessionID: s.sessionID, setID: s.id)
+        sets.removeAll { $0.id == s.id }
+    }
+
+    private func deleteDay() async {
+        for s in day.sessions { await vm.deleteSession(s) }
+        dismiss()
     }
 
     private func stat(_ value: String, _ label: String) -> some View {

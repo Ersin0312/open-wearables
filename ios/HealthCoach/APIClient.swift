@@ -340,17 +340,21 @@ struct APIClient {
 
     /// Weight + body-fat trend; pages at 100 (endpoint cap) until exhausted.
     func bodyTrend(startDate: String, endDate: String) async throws -> [TimeseriesSample] {
+        try await bodyMetricSamples(types: ["weight", "body_fat_percentage"], startDate: startDate, endDate: endDate)
+    }
+
+    /// Generic paged timeseries fetch for arbitrary metric types over a range.
+    func bodyMetricSamples(types: [String], startDate: String, endDate: String) async throws -> [TimeseriesSample] {
         var all: [TimeseriesSample] = []
         var cursor: String?
-        for _ in 0..<20 {
+        for _ in 0..<40 {
             var q = [
                 URLQueryItem(name: "start_time", value: "\(startDate)T00:00:00Z"),
                 URLQueryItem(name: "end_time", value: "\(endDate)T23:59:59Z"),
-                URLQueryItem(name: "types", value: "weight"),
-                URLQueryItem(name: "types", value: "body_fat_percentage"),
                 URLQueryItem(name: "resolution", value: "1hour"),
                 URLQueryItem(name: "limit", value: "100"),
             ]
+            q.append(contentsOf: types.map { URLQueryItem(name: "types", value: $0) })
             if let c = cursor { q.append(URLQueryItem(name: "cursor", value: c)) }
             let req = try makeRequest("/api/v1/users/\(AppConfig.userID)/timeseries", query: q)
             let page = try await send(req, as: PagedTimeseries.self)

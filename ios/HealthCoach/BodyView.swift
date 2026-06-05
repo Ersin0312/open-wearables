@@ -66,6 +66,7 @@ struct BodyComposition {
 
 struct BodyView: View {
     @StateObject private var vm = BodyViewModel()
+    @State private var detailMetric: BodyMetricKind?
 
     private var composition: BodyComposition? {
         guard let w = vm.currentWeight else { return nil }
@@ -97,6 +98,9 @@ struct BodyView: View {
             } }
             .task { await vm.load() }
             .refreshable { await vm.load() }
+            .sheet(item: $detailMetric) { kind in
+                KPIDetailView(kind: kind, heightCm: vm.snapshot?.heightCm)
+            }
         }
         .preferredColorScheme(.dark)
     }
@@ -108,20 +112,25 @@ struct BodyView: View {
         }
     }
 
-    // Big weight + 7/30-day deltas (down = good in a cut → green).
+    // Big weight + 7/30-day deltas (down = good in a cut → green). Tap → history.
     private var weightHero: some View {
-        DashCard(title: "Gewicht", systemImage: "scalemass") {
-            HStack(alignment: .firstTextBaseline, spacing: 6) {
-                Text(fmt(vm.currentWeight ?? 0)).font(.system(size: 46, weight: .bold, design: .rounded))
-                    .foregroundStyle(Theme.textPrimary)
-                Text("kg").foregroundStyle(Theme.textSecondary)
-            }
-            HStack(spacing: 10) {
-                deltaChip("7 Tage", vm.deltaOver(days: 7, vm.weightTrend), unit: "kg")
-                deltaChip("30 Tage", vm.deltaOver(days: 30, vm.weightTrend), unit: "kg")
-                deltaChip("90 Tage", vm.delta(vm.weightTrend), unit: "kg")
+        Button { detailMetric = .weight } label: {
+            DashCard(title: "Gewicht", systemImage: "scalemass") {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text(fmt(vm.currentWeight ?? 0)).font(.system(size: 46, weight: .bold, design: .rounded))
+                        .foregroundStyle(Theme.textPrimary)
+                    Text("kg").foregroundStyle(Theme.textSecondary)
+                    Spacer()
+                    Image(systemName: "chart.xyaxis.line").foregroundStyle(Theme.accent)
+                }
+                HStack(spacing: 10) {
+                    deltaChip("7 Tage", vm.deltaOver(days: 7, vm.weightTrend), unit: "kg")
+                    deltaChip("30 Tage", vm.deltaOver(days: 30, vm.weightTrend), unit: "kg")
+                    deltaChip("90 Tage", vm.delta(vm.weightTrend), unit: "kg")
+                }
             }
         }
+        .buttonStyle(.plain)
     }
 
     private func deltaChip(_ label: String, _ value: Double?, unit: String) -> some View {
@@ -137,20 +146,27 @@ struct BodyView: View {
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
-    // Composition KPIs, all derived from the scale.
+    // Composition KPIs, all derived from the scale. Tap any → full history.
     private var compositionGrid: some View {
         DashCard(title: "Körperzusammensetzung", systemImage: "chart.pie") {
             let c = composition
             let cols = [GridItem(.flexible()), GridItem(.flexible())]
             LazyVGrid(columns: cols, spacing: 10) {
-                StatChip(value: kpi(vm.snapshot?.bodyFatPercent, "%"), label: "Körperfett", color: Theme.warn)
-                StatChip(value: kpi(vm.snapshot?.muscleMassKg, "kg"), label: "Muskelmasse", color: Theme.good)
-                StatChip(value: kpi(c?.fatFreeMass, "kg"), label: "Fettfreie Masse", color: Theme.teal)
-                StatChip(value: kpi(c?.ffmi, ""), label: "FFMI", color: Theme.violet)
-                StatChip(value: kpi(c?.fatMass, "kg"), label: "Fettmasse", color: Theme.danger)
-                StatChip(value: kpi(vm.snapshot?.bmi, ""), label: "BMI", color: Theme.accent)
+                kpiChip(.bodyFat, kpi(vm.snapshot?.bodyFatPercent, "%"), "Körperfett", Theme.warn)
+                kpiChip(.muscle, kpi(vm.snapshot?.muscleMassKg, "kg"), "Muskelmasse", Theme.good)
+                kpiChip(.ffm, kpi(c?.fatFreeMass, "kg"), "Fettfreie Masse", Theme.teal)
+                kpiChip(.ffmi, kpi(c?.ffmi, ""), "FFMI", Theme.violet)
+                kpiChip(.fatMass, kpi(c?.fatMass, "kg"), "Fettmasse", Theme.danger)
+                kpiChip(.bmi, kpi(vm.snapshot?.bmi, ""), "BMI", Theme.accent)
             }
         }
+    }
+
+    private func kpiChip(_ kind: BodyMetricKind, _ value: String, _ label: String, _ color: Color) -> some View {
+        Button { detailMetric = kind } label: {
+            StatChip(value: value, label: label, color: color)
+        }
+        .buttonStyle(.plain)
     }
 
     private func kpi(_ value: Double?, _ unit: String) -> String {
