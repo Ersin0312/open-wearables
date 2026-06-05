@@ -27,7 +27,9 @@ struct TrainingView: View {
 
 struct StartSessionView: View {
     @ObservedObject var vm: TrainingViewModel
+    @StateObject private var cardio = CardioStore()
     @State private var detailDay: TrainingViewModel.DayGroup?
+    @State private var showCardioLog = false
 
     var body: some View {
         List {
@@ -39,6 +41,37 @@ struct StartSessionView: View {
                         .font(.headline)
                 }
             }
+
+            Section {
+                Button { showCardioLog = true } label: {
+                    Label("Cardio / Zone-2 loggen", systemImage: "figure.run")
+                }
+                if cardio.minutesLast7Days > 0 {
+                    HStack {
+                        Text("Zone-2 (7 Tage)").font(.caption).foregroundStyle(.secondary)
+                        Spacer()
+                        Text("\(cardio.minutesLast7Days) min").font(.caption.weight(.semibold))
+                    }
+                }
+                ForEach(cardio.sessions.prefix(5)) { c in
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("\(cardioLabel(c.kind)) · \(Int(c.minutes)) min").font(.subheadline)
+                            Text(weekdayDateShort(c.performedAt)
+                                 + (c.avgHr.map { " · \($0) bpm" } ?? "")
+                                 + (c.distance.map { " · \(fmt($0)) km" } ?? ""))
+                                .font(.caption2).foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                    }
+                    .swipeActions {
+                        Button(role: .destructive) { Task { await cardio.delete(c) } } label: {
+                            Label("Löschen", systemImage: "trash")
+                        }
+                    }
+                }
+            } header: { Text("Cardio") }
+
             let days = vm.historyByDay
             if !days.isEmpty {
                 Section("Trainingstage") {
@@ -67,9 +100,13 @@ struct StartSessionView: View {
                 }
             }
         }
-        .refreshable { await vm.loadHistory() }
+        .refreshable { await vm.loadHistory(); await cardio.load() }
+        .task { await cardio.load() }
         .sheet(item: $detailDay) { day in
             DayDetailView(day: day, vm: vm).preferredColorScheme(.dark)
+        }
+        .sheet(isPresented: $showCardioLog) {
+            CardioLogSheet(store: cardio).preferredColorScheme(.dark)
         }
     }
 }

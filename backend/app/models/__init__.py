@@ -1,6 +1,7 @@
 from .api_key import ApiKey
 from .application import Application
 from .archival_setting import ArchivalSetting
+from .cardio_session import CardioSession
 from .data_point_series import DataPointSeries
 from .health_score import HealthScore
 from .data_point_series_archive import DataPointSeriesArchive
@@ -33,6 +34,7 @@ __all__ = [
     "ApiKey",
     "Application",
     "ArchivalSetting",
+    "CardioSession",
     "Developer",
     "DataSource",
     "DataPointSeriesArchive",

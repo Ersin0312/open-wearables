@@ -289,6 +289,29 @@ struct APIClient {
         return decoded.products.compactMap { $0.toFoodHit() }
     }
 
+    // MARK: - Cardio
+
+    func cardioSessions(limit: Int = 50) async throws -> [CardioSession] {
+        let req = try makeRequest("/api/v1/users/\(AppConfig.userID)/cardio",
+                                  query: [URLQueryItem(name: "limit", value: String(limit))])
+        return try await send(req, as: [CardioSession].self)
+    }
+
+    func createCardio(kind: String, durationMin: Double, avgHr: Int?, distanceKm: Double?, notes: String?) async throws -> CardioSession {
+        var payload: [String: Any] = ["kind": kind, "duration_min": durationMin]
+        if let hr = avgHr { payload["avg_hr"] = hr }
+        if let d = distanceKm { payload["distance_km"] = d }
+        if let n = notes, !n.isEmpty { payload["notes"] = n }
+        let body = try JSONSerialization.data(withJSONObject: payload)
+        let req = try makeRequest("/api/v1/users/\(AppConfig.userID)/cardio", method: "POST", body: body)
+        return try await send(req, as: CardioSession.self)
+    }
+
+    func deleteCardio(id: String) async throws {
+        let req = try makeRequest("/api/v1/users/\(AppConfig.userID)/cardio/\(id)", method: "DELETE")
+        _ = try await sendDiscardingResult(req)
+    }
+
     // MARK: - Coach
 
     func coachEnabled() async throws -> Bool {
