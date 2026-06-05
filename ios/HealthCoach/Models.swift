@@ -111,6 +111,17 @@ struct TrainingSet: Codable, Identifiable, Hashable {
     }
 }
 
+/// The last time a machine was used: its sets from the most recent session.
+struct ExercisePerformance: Codable {
+    let performedAt: String
+    let sets: [TrainingSet]
+
+    enum CodingKeys: String, CodingKey {
+        case performedAt = "performed_at"
+        case sets
+    }
+}
+
 // MARK: - Body composition
 
 struct BodySlowChanging: Codable, Hashable {

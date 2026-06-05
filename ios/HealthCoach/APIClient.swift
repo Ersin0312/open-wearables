@@ -209,6 +209,18 @@ struct APIClient {
         _ = try await sendDiscardingResult(req)
     }
 
+    /// Last performance of a machine (sets from its most recent session).
+    /// Returns nil when the user has never logged this exercise before.
+    func lastExercisePerformance(exerciseID: String, excludeSession: String?) async throws -> ExercisePerformance? {
+        var q: [URLQueryItem] = []
+        if let ex = excludeSession { q.append(URLQueryItem(name: "exclude_session", value: ex)) }
+        let req = try makeRequest("/api/v1/users/\(AppConfig.userID)/training/exercises/\(exerciseID)/last", query: q)
+        let data = try await sendDiscardingResult(req)
+        let trimmed = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed == "null" || trimmed?.isEmpty == true { return nil }
+        return try JSONDecoder().decode(ExercisePerformance.self, from: data)
+    }
+
     func reopenSession(sessionID: String) async throws -> TrainingSession {
         let req = try makeRequest("/api/v1/users/\(AppConfig.userID)/training/sessions/\(sessionID)/reopen", method: "POST", body: Data("{}".utf8))
         return try await send(req, as: TrainingSession.self)

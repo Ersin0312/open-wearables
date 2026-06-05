@@ -198,6 +198,15 @@ struct SetLoggerSection: View {
     @State private var search = ""
     @State private var reps = ""
     @State private var weight = ""
+    @State private var lastPerf: ExercisePerformance?
+    @State private var loadingPerf = false
+
+    private func loadPerf(_ ex: Exercise) async {
+        loadingPerf = true; lastPerf = nil
+        lastPerf = try? await APIClient.shared.lastExercisePerformance(
+            exerciseID: ex.id, excludeSession: vm.activeSessionID)
+        loadingPerf = false
+    }
 
     private var favoriteExercises: [Exercise] {
         let q = search.lowercased().split(separator: " ").map(String.init).filter { !$0.isEmpty }
@@ -225,8 +234,33 @@ struct SetLoggerSection: View {
                             .font(.caption).foregroundStyle(.secondary)
                     }
                     Spacer()
-                    Button("Ändern") { selected = nil; search = "" }
+                    Button("Ändern") { selected = nil; search = ""; lastPerf = nil }
                 }
+
+                if let perf = lastPerf {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Letztes Mal (\(weekdayDateShort(perf.performedAt))): \(summarizeSets(perf.sets))")
+                            .font(.caption).foregroundStyle(.secondary)
+                        if let sugg = doubleProgression(from: perf.sets) {
+                            Button {
+                                reps = String(sugg.reps)
+                                weight = fmt(sugg.weight)
+                            } label: {
+                                HStack(spacing: 6) {
+                                    Image(systemName: "wand.and.stars")
+                                    Text("Vorschlag: \(sugg.reps) × \(fmt(sugg.weight)) kg")
+                                        .fontWeight(.semibold)
+                                    Text("· \(sugg.rationale)").foregroundStyle(.secondary)
+                                }
+                                .font(.caption)
+                            }
+                            .buttonStyle(.borderless)
+                        }
+                    }
+                } else if loadingPerf {
+                    Text("Lade letzte Leistung…").font(.caption).foregroundStyle(.secondary)
+                }
+
                 HStack {
                     TextField("Wdh.", text: $reps).keyboardType(.numberPad).frame(width: 70)
                         .submitLabel(.next)
@@ -257,6 +291,9 @@ struct SetLoggerSection: View {
                     }
                 }
             }
+        }
+        .task(id: selected?.id) {
+            if let ex = selected { await loadPerf(ex) }
         }
     }
 

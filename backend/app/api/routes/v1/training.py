@@ -9,8 +9,10 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query, status
+from pydantic import BaseModel
 
 from app.database import DbSession
+from app.models import TrainingSession, TrainingSet
 from app.schemas.model_crud.training import (
     ExerciseCreate,
     ExerciseResponse,
@@ -198,6 +200,44 @@ def get_last_session(
 ):
     """For the 'repeat last session' shortcut — returns the last session with given split_tag."""
     return training_session_service.get_last_for_user_and_split(db, user_id, split_tag)
+
+
+class LastExercisePerformance(BaseModel):
+    performed_at: datetime
+    sets: list[TrainingSetResponse]
+
+
+@router.get(
+    "/users/{user_id}/training/exercises/{exercise_id}/last",
+    response_model=LastExercisePerformance | None,
+)
+def get_last_exercise_performance(
+    user_id: UUID,
+    exercise_id: UUID,
+    db: DbSession,
+    _api_key: ApiKeyDep,
+    exclude_session: UUID | None = Query(None, description="Skip the current/active session"),
+):
+    """Most recent performance of one machine: the sets from the last session
+    where the user did this exercise. Powers last-time display + progression."""
+    q = (
+        db.query(TrainingSet)
+        .join(TrainingSession, TrainingSet.session_id == TrainingSession.id)
+        .filter(TrainingSession.user_id == user_id, TrainingSet.exercise_id == exercise_id)
+    )
+    if exclude_session is not None:
+        q = q.filter(TrainingSet.session_id != exclude_session)
+    latest = q.order_by(TrainingSet.created_at.desc()).first()
+    if latest is None:
+        return None
+
+    sets = (
+        db.query(TrainingSet)
+        .filter(TrainingSet.session_id == latest.session_id, TrainingSet.exercise_id == exercise_id)
+        .order_by(TrainingSet.set_number)
+        .all()
+    )
+    return LastExercisePerformance(performed_at=latest.created_at, sets=sets)
 
 
 # ------------------------- Training sets -------------------------

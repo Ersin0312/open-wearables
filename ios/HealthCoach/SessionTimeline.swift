@@ -45,6 +45,39 @@ func formatInterval(_ seconds: TimeInterval) -> String {
     return String(format: "%d:%02d", m, sec)
 }
 
+// MARK: - Double progression
+
+/// Next-target suggestion from the last performance, using double progression:
+/// add reps within the range until the top is hit at the heaviest weight, then
+/// add load and drop back to the bottom of the range.
+struct ProgressionSuggestion {
+    let weight: Double
+    let reps: Int
+    let rationale: String
+}
+
+func doubleProgression(from sets: [TrainingSet],
+                       repRange: ClosedRange<Int> = 8...12,
+                       increment: Double = 2.5) -> ProgressionSuggestion? {
+    guard !sets.isEmpty else { return nil }
+    let weights = sets.compactMap { Double($0.weightKg) }
+    guard let top = weights.max() else { return nil }
+    let setsAtTop = sets.filter { (Double($0.weightKg) ?? 0) == top }
+    let minReps = setsAtTop.map { $0.reps }.min() ?? 0
+    if minReps >= repRange.upperBound {
+        return ProgressionSuggestion(weight: top + increment, reps: repRange.lowerBound,
+                                     rationale: "Top der Range (\(repRange.upperBound)) erreicht → +\(fmt(increment)) kg")
+    }
+    return ProgressionSuggestion(weight: top, reps: min(minReps + 1, repRange.upperBound),
+                                 rationale: "+1 Wdh. bei gleichem Gewicht")
+}
+
+/// Compact summary of a performance, e.g. "10×40 · 8×60 · 8×80 kg".
+func summarizeSets(_ sets: [TrainingSet]) -> String {
+    let ordered = sets.sorted { $0.setNumber < $1.setNumber }
+    return ordered.map { "\($0.reps)×\(fmt(Double($0.weightKg) ?? 0))" }.joined(separator: " · ") + " kg"
+}
+
 // MARK: - Timeline model
 
 /// One row in a session timeline: a logged set, with the rest since the
