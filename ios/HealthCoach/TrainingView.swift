@@ -27,7 +27,7 @@ struct TrainingView: View {
 
 struct StartSessionView: View {
     @ObservedObject var vm: TrainingViewModel
-    @State private var detailSession: TrainingSession?
+    @State private var detailDay: TrainingViewModel.DayGroup?
 
     var body: some View {
         List {
@@ -35,60 +35,50 @@ struct StartSessionView: View {
                 Button {
                     Task { await vm.start(split: "custom") }
                 } label: {
-                    Label("Neue Session starten", systemImage: "play.circle.fill")
+                    Label("Session starten / fortsetzen", systemImage: "play.circle.fill")
                         .font(.headline)
                 }
             }
-            if !vm.pastSessions.isEmpty {
-                Section("Letzte Sessions") {
-                    ForEach(vm.pastSessions.filter { $0.endedAt != nil }.prefix(15)) { s in
-                        Button { detailSession = s } label: {
+            let days = vm.historyByDay
+            if !days.isEmpty {
+                Section("Trainingstage") {
+                    ForEach(days.prefix(20)) { day in
+                        Button { detailDay = day } label: {
                             HStack(spacing: 12) {
                                 Image(systemName: "calendar")
                                     .foregroundStyle(.secondary).font(.subheadline)
                                 VStack(alignment: .leading, spacing: 2) {
-                                    Text(weekdayDateShort(s.startedAt)).font(.subheadline.weight(.semibold))
+                                    Text(day.label).font(.subheadline.weight(.semibold))
                                         .foregroundStyle(.primary)
-                                    Text(clockTime(s.startedAt)).font(.caption).foregroundStyle(.secondary)
+                                    Text("ab \(clockTime(day.firstStart))"
+                                         + (day.sessions.count > 1 ? " · \(day.sessions.count) Einheiten" : ""))
+                                        .font(.caption).foregroundStyle(.secondary)
                                 }
                                 Spacer()
                                 Image(systemName: "chevron.right").font(.caption2).foregroundStyle(.secondary)
                             }
                         }
-                        .contextMenu {
-                            Button { Task { await vm.reopen(s) } } label: {
-                                Label("Wieder öffnen", systemImage: "arrow.uturn.backward")
-                            }
-                            Button { Task { await vm.duplicate(s) } } label: {
-                                Label("Duplizieren", systemImage: "plus.square.on.square")
-                            }
-                            Button(role: .destructive) { Task { await vm.deleteSession(s) } } label: {
-                                Label("Löschen", systemImage: "trash")
-                            }
-                        }
                         .swipeActions {
-                            Button(role: .destructive) { Task { await vm.deleteSession(s) } } label: {
-                                Label("Löschen", systemImage: "trash")
-                            }
-                            Button { Task { await vm.reopen(s) } } label: {
-                                Label("Öffnen", systemImage: "arrow.uturn.backward")
-                            }.tint(.blue)
+                            Button(role: .destructive) {
+                                Task { for s in day.sessions { await vm.deleteSession(s) } }
+                            } label: { Label("Löschen", systemImage: "trash") }
                         }
                     }
                 }
             }
         }
         .refreshable { await vm.loadHistory() }
-        .sheet(item: $detailSession) { s in
-            SessionDetailView(session: s, vm: vm).preferredColorScheme(.dark)
+        .sheet(item: $detailDay) { day in
+            DayDetailView(day: day, vm: vm).preferredColorScheme(.dark)
         }
     }
 }
 
-/// Read-only breakdown of a past session: weekday/date/time header, duration +
-/// volume, and the chronological timeline (exercises with times + rest pauses).
-struct SessionDetailView: View {
-    let session: TrainingSession
+/// Read-only breakdown of one training DAY (all sessions merged): weekday/date
+/// header, sets/duration/volume stats, then sets grouped by muscle → machine,
+/// each set with its clock time + the rest computed across the whole day.
+struct DayDetailView: View {
+    let day: TrainingViewModel.DayGroup
     @ObservedObject var vm: TrainingViewModel
     @Environment(\.dismiss) private var dismiss
 
@@ -98,11 +88,11 @@ struct SessionDetailView: View {
     private var totalVolume: Double {
         sets.reduce(0) { $0 + Double($1.reps) * (Double($1.weightKg) ?? 0) }
     }
+    /// Span from the day's first set to its last set.
     private var duration: String? {
-        guard let endIso = session.endedAt,
-              let start = parseTimestamp(session.startedAt),
-              let end = parseTimestamp(endIso) else { return nil }
-        return formatInterval(end.timeIntervalSince(start))
+        let times = sets.compactMap { parseTimestamp($0.createdAt) }.sorted()
+        guard let first = times.first, let last = times.last, last > first else { return nil }
+        return formatInterval(last.timeIntervalSince(first))
     }
 
     var body: some View {
@@ -110,7 +100,7 @@ struct SessionDetailView: View {
             List {
                 Section {
                     VStack(alignment: .leading, spacing: 6) {
-                        Text(weekdayDateTime(session.startedAt)).font(.headline)
+                        Text(weekdayDateTime(day.firstStart)).font(.headline)
                         HStack(spacing: 16) {
                             stat("\(sets.count)", "Sätze")
                             if let d = duration { stat(d, "Dauer") }
@@ -121,24 +111,29 @@ struct SessionDetailView: View {
                 if loading {
                     HStack { ProgressView(); Text("Lade…").foregroundStyle(.secondary) }
                 } else if sets.isEmpty {
-                    Text("Keine Sätze in dieser Session.").foregroundStyle(.secondary)
+                    Text("Keine Sätze an diesem Tag.").foregroundStyle(.secondary)
                 } else {
-                    Section("Verlauf") {
-                        SessionTimelineView(entries: buildTimeline(sets: sets, name: vm.exerciseName, image: vm.imageURL))
-                    }
+                    MuscleGroupedView(sets: sets, name: vm.exerciseName, image: vm.imageURL, muscle: vm.muscle)
                 }
             }
-            .navigationTitle("Session").navigationBarTitleDisplayMode(.inline)
+            .navigationTitle("Trainingstag").navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) { Button("Fertig") { dismiss() } }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button { Task { await vm.reopen(session); dismiss() } } label: {
-                        Label("Öffnen", systemImage: "arrow.uturn.backward")
+                    if let last = day.sessions.last {
+                        Button { Task { await vm.reopen(last); dismiss() } } label: {
+                            Label("Fortsetzen", systemImage: "arrow.uturn.backward")
+                        }
                     }
                 }
             }
             .task {
-                sets = (try? await APIClient.shared.sets(sessionID: session.id)) ?? []
+                // Merge sets across every session that started this day.
+                var all: [TrainingSet] = []
+                for s in day.sessions {
+                    if let part = try? await APIClient.shared.sets(sessionID: s.id) { all.append(contentsOf: part) }
+                }
+                sets = all
                 loading = false
             }
         }

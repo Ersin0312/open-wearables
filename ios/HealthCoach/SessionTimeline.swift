@@ -137,6 +137,93 @@ struct SessionTimelineView: View {
     }
 }
 
+// MARK: - Muscle-grouped breakdown (session detail)
+
+/// A session/day broken down by muscle group → machine → sets. Each set keeps
+/// its clock time and the rest (computed chronologically across the whole day),
+/// so grouping by muscle doesn't lose the real pause information. Emits List
+/// Sections, so place it directly inside a List.
+struct MuscleGroupedView: View {
+    let sets: [TrainingSet]
+    let name: (String) -> String
+    let image: (String) -> String?
+    let muscle: (String) -> String
+
+    /// setID → rest before it (global chronological gap).
+    private var restMap: [String: TimeInterval] {
+        var m: [String: TimeInterval] = [:]
+        for e in buildTimeline(sets: sets, name: name, image: image) {
+            if let r = e.restBefore { m[e.set.id] = r }
+        }
+        return m
+    }
+
+    private struct ExBlock: Identifiable {
+        let id: String
+        let name: String
+        let image: String?
+        let sets: [TrainingSet]
+    }
+    private struct Section_: Identifiable {
+        let id: String
+        let label: String
+        let exercises: [ExBlock]
+    }
+
+    private var sections: [Section_] {
+        // First-appearance time per exercise, to order machines as performed.
+        var firstTime: [String: Date] = [:]
+        for s in sets.sorted(by: { ($0.createdAt) < ($1.createdAt) }) {
+            if firstTime[s.exerciseID] == nil { firstTime[s.exerciseID] = parseTimestamp(s.createdAt) }
+        }
+        var byMuscle: [String: [String: [TrainingSet]]] = [:]
+        for s in sets { byMuscle[muscle(s.exerciseID), default: [:]][s.exerciseID, default: []].append(s) }
+        let order = MUSCLE_ORDER + byMuscle.keys.filter { !MUSCLE_ORDER.contains($0) }
+        return order.compactMap { m -> Section_? in
+            guard let exMap = byMuscle[m], !exMap.isEmpty else { return nil }
+            let exercises = exMap.map { (exID, exSets) in
+                ExBlock(id: exID, name: name(exID), image: image(exID),
+                        sets: exSets.sorted { $0.setNumber < $1.setNumber })
+            }.sorted { (firstTime[$0.id] ?? .distantPast) < (firstTime[$1.id] ?? .distantPast) }
+            return Section_(id: m, label: MUSCLE_LABELS[m] ?? (m.isEmpty ? "Sonstiges" : m), exercises: exercises)
+        }
+    }
+
+    var body: some View {
+        ForEach(sections) { sec in
+            Section(sec.label) {
+                ForEach(sec.exercises) { ex in
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack(spacing: 10) {
+                            ExerciseThumb(imageURL: ex.image, size: 38)
+                            Text(ex.name).font(.subheadline.weight(.semibold))
+                            Spacer()
+                            if let first = ex.sets.first {
+                                Text(clockTime(first.createdAt)).font(.caption2).foregroundStyle(.secondary)
+                            }
+                        }
+                        ForEach(ex.sets) { s in
+                            HStack(spacing: 8) {
+                                Text("#\(s.setNumber)").font(.caption).foregroundStyle(.secondary)
+                                    .frame(width: 28, alignment: .leading)
+                                Text("\(s.reps) × \(fmt(Double(s.weightKg) ?? 0)) kg").font(.subheadline)
+                                Spacer()
+                                if let r = restMap[s.id] {
+                                    Label(formatInterval(r), systemImage: "pause.circle")
+                                        .font(.caption2).foregroundStyle(.secondary)
+                                }
+                                Text(clockTime(s.createdAt)).font(.caption2).foregroundStyle(.secondary)
+                                    .frame(width: 42, alignment: .trailing)
+                            }
+                        }
+                    }
+                    .padding(.vertical, 2)
+                }
+            }
+        }
+    }
+}
+
 /// A timeline set row with inline edit (pencil) + delete, for the live session.
 private struct EditableTimelineSet: View {
     let set: TrainingSet

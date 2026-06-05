@@ -69,6 +69,15 @@ final class TrainingViewModel: ObservableObject {
     }
 
     func start(split: String) async {
+        // One gym day = one session: if a session already exists today, resume it
+        // instead of creating a second one for the same day.
+        if let todays = pastSessions.first(where: {
+            guard let d = parseTimestamp($0.startedAt) else { return false }
+            return Calendar.current.isDateInToday(d)
+        }) {
+            await reopen(todays)
+            return
+        }
         do {
             let s = try await APIClient.shared.startSession(splitTag: split)
             activeSessionID = s.id
@@ -156,6 +165,29 @@ final class TrainingViewModel: ObservableObject {
             _ = try await APIClient.shared.updateSet(sessionID: id, setID: s.id, reps: reps, weightKg: weight)
             sets = try await APIClient.shared.sets(sessionID: id)
         } catch { self.error = error.localizedDescription }
+    }
+
+    /// A training day = all sessions that started on the same calendar day,
+    /// merged into one tile (one gym day = one logical session).
+    struct DayGroup: Identifiable {
+        let id: String                  // yyyy-MM-dd
+        let label: String               // "Mittwoch, 05.06."
+        let sessions: [TrainingSession]
+        var firstStart: String { sessions.first?.startedAt ?? "" }
+    }
+
+    var historyByDay: [DayGroup] {
+        let ended = pastSessions.filter { $0.endedAt != nil }
+        var byDay: [String: [TrainingSession]] = [:]
+        for s in ended {
+            let key = String(s.startedAt.prefix(10))   // yyyy-MM-dd
+            byDay[key, default: []].append(s)
+        }
+        return byDay.map { (key, sess) in
+            let sorted = sess.sorted { $0.startedAt < $1.startedAt }
+            return DayGroup(id: key, label: weekdayDateShort(sorted.first!.startedAt), sessions: sorted)
+        }
+        .sorted { $0.id > $1.id }   // newest day first
     }
 
     /// Chronological timeline of the active session's sets, with rest deltas.
