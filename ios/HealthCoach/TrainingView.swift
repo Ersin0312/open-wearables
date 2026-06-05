@@ -17,7 +17,9 @@ struct TrainingView: View {
             .task {
                 await vm.loadActive()
                 await vm.loadHistory()
-                await vm.loadExercisesForActiveSession()
+                // Always load the full library so history rows resolve machine
+                // names + photos even when no session is active.
+                await vm.loadExercises()
             }
         }
     }

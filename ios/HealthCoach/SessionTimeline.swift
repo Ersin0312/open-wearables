@@ -293,6 +293,11 @@ private struct MuscleGroupedSetRow: View {
                         reps = String(set.reps); weight = fmt(Double(set.weightKg) ?? 0); editing = true
                     } label: { Image(systemName: "pencil").foregroundStyle(.secondary) }
                 }
+                // Explicit trash — swipeActions don't fire on rows nested in a
+                // VStack (they only work on direct List cells).
+                if let onDelete {
+                    Button { onDelete(set) } label: { Image(systemName: "trash").foregroundStyle(.red) }
+                }
             }
         }
         .buttonStyle(.borderless)
