@@ -11,6 +11,7 @@ from .event_record import EventRecord
 from .event_record_detail import EventRecordDetail
 from .exercise import Exercise
 from .invitation import Invitation
+from .nutrition_entry import NutritionEntry
 from .personal_record import PersonalRecord
 from .provider_priority import ProviderPriority
 from .provider_setting import ProviderSetting
@@ -48,6 +49,7 @@ __all__ = [
     "Exercise",
     "SleepDetails",
     "Supplement",
+    "NutritionEntry",
     "SupplementIntake",
     "SupplementStack",
     "SupplementStackItem",

@@ -44,9 +44,11 @@ final class TodayViewModel: ObservableObject {
 
 struct TodayView: View {
     @StateObject private var vm = TodayViewModel()
+    @StateObject private var nutrition = NutritionStore()
     @ObservedObject var daily: DailyStore
     @Binding var hasKey: Bool
     @State private var showSettings = false
+    @State private var showNutrition = false
 
     var body: some View {
         NavigationStack {
@@ -60,6 +62,7 @@ struct TodayView: View {
 
                     statusLine
                     northStar
+                    nutritionCard
                     agenda
                     recoveryCard
                 }
@@ -79,8 +82,11 @@ struct TodayView: View {
             .sheet(isPresented: $showSettings) {
                 NavigationStack { SettingsView(hasKey: $hasKey) }.preferredColorScheme(.dark)
             }
-            .task { await vm.load() }
-            .refreshable { await vm.load() }
+            .sheet(isPresented: $showNutrition) {
+                NutritionView(store: nutrition).preferredColorScheme(.dark)
+            }
+            .task { await vm.load(); await nutrition.load() }
+            .refreshable { await vm.load(); await nutrition.load() }
         }
         .preferredColorScheme(.dark)
     }
@@ -130,14 +136,58 @@ struct TodayView: View {
         }
     }
 
+    // Ernährung heute — real totals from logged entries; tap to open the log.
+    private var nutritionCard: some View {
+        let kcal = nutrition.totalKcal
+        let pro = nutrition.totalProtein
+        let kcalGoal = nutrition.calorieGoalValue
+        let proPct = nutrition.proteinGoal > 0 ? Double(pro) / Double(nutrition.proteinGoal) : 0
+        let kcalPct = kcalGoal > 0 ? Double(kcal) / Double(kcalGoal) : 0
+        return Button { showNutrition = true } label: {
+            DashCard(title: "Ernährung heute", systemImage: "fork.knife") {
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        HStack(alignment: .firstTextBaseline, spacing: 4) {
+                            Text("\(kcal)").font(.system(size: 32, weight: .bold, design: .rounded))
+                                .foregroundStyle(Theme.textPrimary)
+                            Text("/ \(nutrition.calorieGoalText) kcal").font(.caption)
+                                .foregroundStyle(Theme.textSecondary)
+                        }
+                        Text("Protein \(pro)/\(nutrition.proteinGoal) g · \(nutrition.todayEntries.count) Einträge")
+                            .font(.caption2).foregroundStyle(Theme.textSecondary)
+                    }
+                    Spacer()
+                    Image(systemName: "plus.circle.fill").font(.title2).foregroundStyle(Theme.accent)
+                }
+                progressBar(kcalPct, color: kcalColorToday(kcalPct))
+                progressBar(proPct, color: Theme.violet)
+            }
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func progressBar(_ pct: Double, color: Color) -> some View {
+        GeometryReader { geo in
+            ZStack(alignment: .leading) {
+                Capsule().fill(Theme.cardElevated).frame(height: 6)
+                Capsule().fill(color).frame(width: geo.size.width * min(max(pct, 0), 1), height: 6)
+            }
+        }.frame(height: 6)
+    }
+
+    private func kcalColorToday(_ pct: Double) -> Color {
+        switch pct { case ..<0.85: return Theme.good; case ..<1.0: return Theme.warn; default: return Theme.danger }
+    }
+
     // Daily agenda — checkable items.
     private var agenda: some View {
         DashCard(title: "Tagesagenda", systemImage: "checklist") {
             agendaRow("training", "Training: \(PlanConfig.workoutForToday())",
                       done: vm.trainingLoggedToday)
-            agendaRow("protein", "Protein \(daily.proteinConsumed)/\(daily.proteinGoal) g",
-                      done: daily.proteinConsumed >= daily.proteinGoal)
-            agendaRow("calories", "Kalorien-Ziel \(daily.calorieGoalText) kcal", done: false)
+            agendaRow("protein", "Protein \(nutrition.totalProtein)/\(nutrition.proteinGoal) g",
+                      done: nutrition.totalProtein >= nutrition.proteinGoal)
+            agendaRow("calories", "Kalorien \(nutrition.totalKcal)/\(nutrition.calorieGoalText) kcal",
+                      done: nutrition.totalKcal > 0 && nutrition.totalKcal <= nutrition.calorieGoalValue)
             agendaRow("supps", "Supplements (\(vm.supplementsLoggedToday) heute)",
                       done: vm.supplementsLoggedToday > 0)
             agendaRow("water", "Wasser \(fmt(daily.waterLiters))/\(fmt(daily.waterGoal)) L",

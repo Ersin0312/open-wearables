@@ -6,6 +6,7 @@ from .archival import router as archival_router
 from .auth import router as auth_router
 from .coach import router as coach_router
 from .connections import router as connections_router
+from .nutrition import router as nutrition_router
 from .dashboard import router as dashboard_router
 from .data_sources import router as data_sources_router
 from .deprecated_webhooks import router as deprecated_webhooks_router
@@ -59,6 +60,7 @@ v1_router.include_router(outgoing_webhooks_router, prefix="/webhooks", tags=["Ex
 v1_router.include_router(training_router, tags=["External: Training (manual)"])
 v1_router.include_router(supplements_router, tags=["External: Supplements (manual)"])
 v1_router.include_router(coach_router, tags=["External: Coach (AI)"])
+v1_router.include_router(nutrition_router, tags=["External: Nutrition (manual)"])
 
 # --- Internal: dashboard endpoints ---
 v1_router.include_router(auth_router, prefix="/auth", tags=["Internal: Auth"])

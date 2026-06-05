@@ -223,6 +223,59 @@ struct APIClient {
         _ = try await sendDiscardingResult(req)
     }
 
+    // MARK: - Nutrition
+
+    func nutrition(startDate: String? = nil, endDate: String? = nil) async throws -> [NutritionEntry] {
+        var q: [URLQueryItem] = [URLQueryItem(name: "limit", value: "200")]
+        if let s = startDate { q.append(URLQueryItem(name: "start_date", value: "\(s)T00:00:00Z")) }
+        if let e = endDate { q.append(URLQueryItem(name: "end_date", value: "\(e)T23:59:59Z")) }
+        let req = try makeRequest("/api/v1/users/\(AppConfig.userID)/nutrition", query: q)
+        return try await send(req, as: [NutritionEntry].self)
+    }
+
+    func createNutrition(name: String, grams: Double?, kcal: Double, protein: Double?, carbs: Double?, fat: Double?, source: String) async throws -> NutritionEntry {
+        var payload: [String: Any] = ["name": name, "calories": kcal, "source": source]
+        if let g = grams { payload["quantity_g"] = g }
+        if let p = protein { payload["protein_g"] = p }
+        if let c = carbs { payload["carbs_g"] = c }
+        if let f = fat { payload["fat_g"] = f }
+        let body = try JSONSerialization.data(withJSONObject: payload)
+        let req = try makeRequest("/api/v1/users/\(AppConfig.userID)/nutrition", method: "POST", body: body)
+        return try await send(req, as: NutritionEntry.self)
+    }
+
+    func deleteNutrition(id: String) async throws {
+        let req = try makeRequest("/api/v1/users/\(AppConfig.userID)/nutrition/\(id)", method: "DELETE")
+        _ = try await sendDiscardingResult(req)
+    }
+
+    /// Open Food Facts text search — public, no key. Returns per-100g macros.
+    /// Runs against world.openfoodfacts.org, independent of the backend host.
+    func searchFoods(query: String) async throws -> [FoodHit] {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.count >= 2 else { return [] }
+        var comps = URLComponents(string: "https://world.openfoodfacts.org/cgi/search.pl")!
+        comps.queryItems = [
+            URLQueryItem(name: "search_terms", value: trimmed),
+            URLQueryItem(name: "search_simple", value: "1"),
+            URLQueryItem(name: "action", value: "process"),
+            URLQueryItem(name: "json", value: "1"),
+            URLQueryItem(name: "page_size", value: "25"),
+            URLQueryItem(name: "fields", value: "code,product_name,brands,nutriments"),
+        ]
+        var req = URLRequest(url: comps.url!)
+        req.setValue("HealthCoach-iOS/1.0 (personal use)", forHTTPHeaderField: "User-Agent")
+        req.timeoutInterval = 12
+        let (data, resp): (Data, URLResponse)
+        do { (data, resp) = try await URLSession.shared.data(for: req) }
+        catch { throw APIError.transport(error.localizedDescription) }
+        guard let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            throw APIError.transport("Open Food Facts nicht erreichbar")
+        }
+        let decoded = try JSONDecoder().decode(OFFSearchResponse.self, from: data)
+        return decoded.products.compactMap { $0.toFoodHit() }
+    }
+
     // MARK: - Coach
 
     func coachEnabled() async throws -> Bool {
