@@ -33,70 +33,176 @@ final class BodyViewModel: ObservableObject {
         guard samples.count >= 2 else { return nil }
         return (samples.last!.value - samples.first!.value)
     }
+
+    /// Change over the last `days`: latest value minus the earliest sample
+    /// within that window. nil when there isn't enough data.
+    func deltaOver(days: Int, _ samples: [TimeseriesSample]) -> Double? {
+        guard let last = samples.last else { return nil }
+        let cutoff = Calendar.current.date(byAdding: .day, value: -days, to: Date())!
+        let window = samples.filter { (parseTimestamp($0.timestamp) ?? .distantPast) >= cutoff }
+        guard let base = window.first, window.count >= 2 else { return nil }
+        return last.value - base.value
+    }
+
+    var currentWeight: Double? { snapshot?.weightKg ?? weightTrend.last?.value }
+}
+
+/// Body-composition metrics derived purely from scale data (weight, body-fat %,
+/// height) — no tape measure or photos needed.
+struct BodyComposition {
+    let weight: Double
+    let bodyFatPct: Double?
+    let heightCm: Double?
+
+    var fatMass: Double? { bodyFatPct.map { weight * $0 / 100 } }
+    var fatFreeMass: Double? { fatMass.map { weight - $0 } }     // FFM / lean mass
+    /// Fat-Free Mass Index = FFM(kg) / height(m)². A lean-mass benchmark.
+    var ffmi: Double? {
+        guard let ffm = fatFreeMass, let h = heightCm, h > 0 else { return nil }
+        let m = h / 100
+        return ffm / (m * m)
+    }
 }
 
 struct BodyView: View {
     @StateObject private var vm = BodyViewModel()
 
+    private var composition: BodyComposition? {
+        guard let w = vm.currentWeight else { return nil }
+        return BodyComposition(weight: w, bodyFatPct: vm.snapshot?.bodyFatPercent,
+                               heightCm: vm.snapshot?.heightCm)
+    }
+
     var body: some View {
         NavigationStack {
-            List {
-                if let s = vm.snapshot {
-                    Section("Aktuell") {
-                        metric("Gewicht", s.weightKg, "kg")
-                        metric("Körperfett", s.bodyFatPercent, "%")
-                        metric("Muskelmasse", s.muscleMassKg, "kg")
-                        metric("BMI", s.bmi, "")
+            ScrollView {
+                VStack(spacing: 16) {
+                    if vm.snapshot == nil && vm.currentWeight == nil && !vm.loading {
+                        emptyState
+                    } else {
+                        weightHero
+                        compositionGrid
+                        phaseProgress
+                        trendCard(title: "Gewicht", unit: "kg", samples: vm.weightTrend, color: Theme.accent)
+                        trendCard(title: "Körperfett", unit: "%", samples: vm.fatTrend, color: Theme.warn)
                     }
                 }
-                trendSection(title: "Gewicht", unit: "kg", samples: vm.weightTrend, color: .blue)
-                trendSection(title: "Körperfett", unit: "%", samples: vm.fatTrend, color: .orange)
-
-                if vm.snapshot == nil && !vm.loading {
-                    Section {
-                        Text("Noch keine Körperdaten. Sync über Renpho/Apple Health.")
-                            .foregroundStyle(.secondary)
-                    }
-                }
+                .padding(16)
             }
+            .background(Theme.bg.ignoresSafeArea())
             .navigationTitle("Fortschritt")
-            .toolbar { Button { Task { await vm.load() } } label: { Image(systemName: "arrow.clockwise") } }
+            .toolbarColorScheme(.dark, for: .navigationBar)
+            .toolbar { ToolbarItem(placement: .topBarTrailing) {
+                Button { Task { await vm.load() } } label: { Image(systemName: "arrow.clockwise") }
+            } }
             .task { await vm.load() }
             .refreshable { await vm.load() }
         }
+        .preferredColorScheme(.dark)
     }
 
+    private var emptyState: some View {
+        DashCard(title: "Körperwerte", systemImage: "figure.stand") {
+            Text("Noch keine Waagendaten. Synchronisiere deine Körperwaage über Apple Health (Renpho → Health Auto Export).")
+                .font(.subheadline).foregroundStyle(Theme.textSecondary)
+        }
+    }
+
+    // Big weight + 7/30-day deltas (down = good in a cut → green).
+    private var weightHero: some View {
+        DashCard(title: "Gewicht", systemImage: "scalemass") {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Text(fmt(vm.currentWeight ?? 0)).font(.system(size: 46, weight: .bold, design: .rounded))
+                    .foregroundStyle(Theme.textPrimary)
+                Text("kg").foregroundStyle(Theme.textSecondary)
+            }
+            HStack(spacing: 10) {
+                deltaChip("7 Tage", vm.deltaOver(days: 7, vm.weightTrend), unit: "kg")
+                deltaChip("30 Tage", vm.deltaOver(days: 30, vm.weightTrend), unit: "kg")
+                deltaChip("90 Tage", vm.delta(vm.weightTrend), unit: "kg")
+            }
+        }
+    }
+
+    private func deltaChip(_ label: String, _ value: Double?, unit: String) -> some View {
+        let color: Color = value == nil ? Theme.textSecondary : (value! < 0 ? Theme.good : (value! > 0 ? Theme.warn : Theme.textSecondary))
+        let text = value == nil ? "–" : "\(value! > 0 ? "+" : "")\(fmt(value!)) \(unit)"
+        return VStack(alignment: .leading, spacing: 2) {
+            Text(text).font(.system(.subheadline, design: .rounded)).fontWeight(.bold).foregroundStyle(color)
+            Text(label).font(.caption2).foregroundStyle(Theme.textSecondary)
+        }
+        .padding(.horizontal, 12).padding(.vertical, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.cardElevated)
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+
+    // Composition KPIs, all derived from the scale.
+    private var compositionGrid: some View {
+        DashCard(title: "Körperzusammensetzung", systemImage: "chart.pie") {
+            let c = composition
+            let cols = [GridItem(.flexible()), GridItem(.flexible())]
+            LazyVGrid(columns: cols, spacing: 10) {
+                StatChip(value: kpi(vm.snapshot?.bodyFatPercent, "%"), label: "Körperfett", color: Theme.warn)
+                StatChip(value: kpi(vm.snapshot?.muscleMassKg, "kg"), label: "Muskelmasse", color: Theme.good)
+                StatChip(value: kpi(c?.fatFreeMass, "kg"), label: "Fettfreie Masse", color: Theme.teal)
+                StatChip(value: kpi(c?.ffmi, ""), label: "FFMI", color: Theme.violet)
+                StatChip(value: kpi(c?.fatMass, "kg"), label: "Fettmasse", color: Theme.danger)
+                StatChip(value: kpi(vm.snapshot?.bmi, ""), label: "BMI", color: Theme.accent)
+            }
+        }
+    }
+
+    private func kpi(_ value: Double?, _ unit: String) -> String {
+        guard let v = value else { return "–" }
+        return unit.isEmpty ? fmt(v) : "\(fmt(v)) \(unit)"
+    }
+
+    // Progress toward the active phase's goal weight (ties FORTSCHRITT to PLAN).
     @ViewBuilder
-    private func metric(_ label: String, _ value: Double?, _ unit: String) -> some View {
-        HStack {
-            Text(label)
-            Spacer()
-            Text(value != nil ? "\(fmt(value!)) \(unit)" : "–").foregroundStyle(.secondary)
+    private var phaseProgress: some View {
+        if let cur = vm.currentWeight {
+            let start = PlanConfig.startWeight
+            let goal = PlanConfig.currentPhase.goalWeight
+            let total = max(0.1, start - goal)
+            let progress = min(max((start - cur) / total, 0), 1)
+            DashCard(title: "Phasenziel", systemImage: "target") {
+                HStack {
+                    Text("\(fmt(cur)) kg").foregroundStyle(Theme.textPrimary)
+                    Spacer()
+                    Text("Ziel \(fmt(goal)) kg · Phase \(PlanConfig.currentPhase.index)").foregroundStyle(Theme.textSecondary)
+                }.font(.caption)
+                GeometryReader { geo in
+                    ZStack(alignment: .leading) {
+                        Capsule().fill(Theme.cardElevated).frame(height: 8)
+                        Capsule().fill(Theme.accent).frame(width: geo.size.width * progress, height: 8)
+                    }
+                }.frame(height: 8)
+                let remaining = cur - goal
+                Text(remaining > 0 ? "Noch \(fmt(remaining)) kg bis zum Phasenziel" : "Phasenziel erreicht ✓")
+                    .font(.caption2).foregroundStyle(remaining > 0 ? Theme.textSecondary : Theme.good)
+            }
         }
     }
 
     @ViewBuilder
-    private func trendSection(title: String, unit: String, samples: [TimeseriesSample], color: Color) -> some View {
-        Section(title) {
+    private func trendCard(title: String, unit: String, samples: [TimeseriesSample], color: Color) -> some View {
+        DashCard(title: "\(title)-Trend", systemImage: "chart.xyaxis.line") {
             if samples.isEmpty {
-                Text("Keine Daten im Zeitraum.").foregroundStyle(.secondary).font(.footnote)
+                Text("Keine Daten im Zeitraum.").foregroundStyle(Theme.textSecondary).font(.footnote)
             } else {
-                if let d = vm.delta(samples) {
-                    HStack {
-                        Text("Veränderung (90 T)")
-                        Spacer()
-                        Text("\(d > 0 ? "+" : "")\(fmt(d)) \(unit)")
-                            .foregroundStyle(d < 0 ? .green : (d > 0 ? .orange : .secondary))
-                    }
-                    .font(.subheadline)
-                }
                 Chart(samples, id: \.timestamp) { s in
-                    LineMark(x: .value("Zeit", s.timestamp), y: .value(title, s.value))
+                    LineMark(x: .value("Zeit", parseTimestamp(s.timestamp) ?? Date(timeIntervalSince1970: 0)),
+                             y: .value(title, s.value))
                         .foregroundStyle(color)
                         .interpolationMethod(.monotone)
+                    AreaMark(x: .value("Zeit", parseTimestamp(s.timestamp) ?? Date(timeIntervalSince1970: 0)),
+                             y: .value(title, s.value))
+                        .foregroundStyle(LinearGradient(colors: [color.opacity(0.25), .clear], startPoint: .top, endPoint: .bottom))
+                        .interpolationMethod(.monotone)
                 }
-                .chartXAxis(.hidden)
-                .frame(height: 140)
+                .chartXAxis { AxisMarks(values: .automatic(desiredCount: 3)) }
+                .frame(height: 150)
             }
         }
     }
