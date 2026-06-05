@@ -11,13 +11,13 @@ struct HealthCoachApp: App {
 
 struct RootView: View {
     @State private var hasKey = Keychain.get(account: AppConfig.apiKeyKeychainAccount)?.isEmpty == false
+    @StateObject private var daily = DailyStore()
 
     var body: some View {
         // Exactly 5 tabs so iOS never collapses them into a "More" menu.
-        // Settings live behind a gear in the Übersicht toolbar.
         TabView {
-            DashboardView(hasKey: $hasKey)
-                .tabItem { Label("Übersicht", systemImage: "square.grid.2x2.fill") }
+            TodayView(daily: daily, hasKey: $hasKey)
+                .tabItem { Label("Heute", systemImage: "sun.max.fill") }
 
             CoachView()
                 .tabItem { Label("Coach", systemImage: "brain.head.profile") }
