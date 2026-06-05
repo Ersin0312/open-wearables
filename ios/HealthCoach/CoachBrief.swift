@@ -15,13 +15,16 @@ final class CoachBriefStore: ObservableObject {
 
     private let ud = UserDefaults.standard
 
+    // Bump when the brief prompt changes so stale cached briefings regenerate.
+    private static let cacheVersion = "v2"
+
     init() {
         let d = Self.dayKey()
-        morningHeadline = ud.string(forKey: "brief_m_head_\(d)")
-        morningBody = ud.string(forKey: "brief_m_body_\(d)")
+        morningHeadline = ud.string(forKey: "brief_m_head_\(Self.cacheVersion)_\(d)")
+        morningBody = ud.string(forKey: "brief_m_body_\(Self.cacheVersion)_\(d)")
         let w = Self.weekKey()
-        weeklyHeadline = ud.string(forKey: "brief_w_head_\(w)")
-        weeklyBody = ud.string(forKey: "brief_w_body_\(w)")
+        weeklyHeadline = ud.string(forKey: "brief_w_head_\(Self.cacheVersion)_\(w)")
+        weeklyBody = ud.string(forKey: "brief_w_body_\(Self.cacheVersion)_\(w)")
     }
 
     /// Ensure today's morning brief exists; only calls the API when missing or
@@ -34,8 +37,8 @@ final class CoachBriefStore: ObservableObject {
             let r = try await APIClient.shared.coachBrief(kind: "morning", clientContext: context)
             morningHeadline = r.headline; morningBody = r.body
             let d = Self.dayKey()
-            ud.set(r.headline, forKey: "brief_m_head_\(d)")
-            ud.set(r.body, forKey: "brief_m_body_\(d)")
+            ud.set(r.headline, forKey: "brief_m_head_\(Self.cacheVersion)_\(d)")
+            ud.set(r.body, forKey: "brief_m_body_\(Self.cacheVersion)_\(d)")
         } catch {
             self.error = error.localizedDescription
         }
@@ -49,8 +52,8 @@ final class CoachBriefStore: ObservableObject {
             let r = try await APIClient.shared.coachBrief(kind: "weekly", clientContext: context)
             weeklyHeadline = r.headline; weeklyBody = r.body
             let w = Self.weekKey()
-            ud.set(r.headline, forKey: "brief_w_head_\(w)")
-            ud.set(r.body, forKey: "brief_w_body_\(w)")
+            ud.set(r.headline, forKey: "brief_w_head_\(Self.cacheVersion)_\(w)")
+            ud.set(r.body, forKey: "brief_w_body_\(Self.cacheVersion)_\(w)")
         } catch {
             self.error = error.localizedDescription
         }
@@ -133,12 +136,11 @@ struct BriefMarkdown: View {
     @ViewBuilder
     private func row(_ line: String) -> some View {
         if line.hasPrefix("- ") || line.hasPrefix("* ") {
-            HStack(alignment: .top, spacing: 8) {
-                Circle().fill(Theme.accent).frame(width: 5, height: 5).padding(.top, 7)
-                Text(md(String(line.dropFirst(2))))
-                    .font(.subheadline).foregroundStyle(Theme.textPrimary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
+            // Briefings should be prose; if the model still emits a bullet,
+            // render it as a normal paragraph (no marker) so it reads as text.
+            Text(md(String(line.dropFirst(2))))
+                .font(.subheadline).foregroundStyle(Theme.textPrimary)
+                .fixedSize(horizontal: false, vertical: true)
         } else if line.hasPrefix("#") {
             Text(md(line.drop(while: { $0 == "#" || $0 == " " }).description))
                 .font(.subheadline.weight(.semibold)).foregroundStyle(Theme.textPrimary)

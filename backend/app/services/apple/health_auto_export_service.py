@@ -32,6 +32,8 @@ _METRIC_NAME_TO_SERIES: dict[str, SeriesType] = {
     # Renpho writes Lean Body Mass to Apple Health; the body summary uses
     # lean_body_mass as "muscle mass".
     "lean_body_mass": SeriesType.lean_body_mass,
+    # Daily steps from Apple Health (Health Auto Export metric "step_count").
+    "step_count": SeriesType.steps,
 }
 
 # Source string — must contain "apple" so the provider resolves to APPLE.

@@ -409,6 +409,15 @@ struct APIClient {
         return try await send(req, as: BodySummary.self)
     }
 
+    /// Today's total steps from Apple Health (sum of the day's data points).
+    func stepsToday() async throws -> Int {
+        let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"
+        let today = f.string(from: Date())
+        let samples = try await bodyMetricSamples(types: ["steps"], startDate: today, endDate: today)
+        let total = samples.filter { $0.type == "steps" }.reduce(0.0) { $0 + $1.value }
+        return Int(total.rounded())
+    }
+
     func recovery(startDate: String, endDate: String) async throws -> [RecoveryDay] {
         let q = [URLQueryItem(name: "start_date", value: startDate),
                  URLQueryItem(name: "end_date", value: endDate)]

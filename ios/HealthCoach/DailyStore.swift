@@ -45,6 +45,13 @@ final class DailyStore: ObservableObject {
     }
     func resetWater() { waterLiters = 0; save() }
 
+    /// Water (litres) logged on a day N days ago — for multi-day context.
+    static func water(daysAgo: Int) -> Double {
+        let d = Calendar.current.date(byAdding: .day, value: -daysAgo, to: Date())!
+        let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"
+        return UserDefaults.standard.double(forKey: "water_\(f.string(from: d))")
+    }
+
     // Goals (defaults from the current phase; protein from phase config).
     var calorieGoalText: String { PlanConfig.currentPhase.calories }
     var proteinGoal: Int { PlanConfig.currentPhase.proteinGrams }

@@ -12,9 +12,12 @@ from logging import Logger, getLogger
 from uuid import UUID
 
 import httpx
+from sqlalchemy import func, select
 
 from app.config import settings
 from app.database import DbSession
+from app.models import CardioSession, DataPointSeries, NutritionEntry, SeriesTypeDefinition
+from app.schemas.enums import SeriesType
 from app.services.supplement_service import (
     supplement_intake_service,
     supplement_service,
@@ -42,28 +45,39 @@ analysierst und empfiehlst; Änderungen macht der Nutzer in der App."""
 
 _BRIEF_FORMAT = """# Ausgabeformat (strikt einhalten)
 Zeile 1: EINE prägnante Headline (max. 12 Wörter, kein Markdown, keine Aufzählung).
-Danach eine Leerzeile, dann der Body. Schreib in klaren, vollständigen Sätzen mit
-rotem Faden — keine kryptischen Stichworte. Markdown-Überschriften (## ) und **fett**
-sind erlaubt, um zu gliedern. Beziehe IMMER die konkreten Zahlen aus den Daten ein."""
+Danach eine Leerzeile, dann der Body.
 
-_MORNING_INSTRUCTION = """Erstelle einen ausführlichen, durchdachten Morgenbrief für heute.
+ABSOLUT WICHTIG zur Form des Body:
+- Schreibe AUSSCHLIESSLICH in vollständigen, zusammenhängenden Sätzen und Absätzen.
+- Verwende KEINE Aufzählungszeichen, KEINE Bullet-Points, KEINE Stichworte
+  (also kein "-", "*", "•", keine Listen). Jeder Abschnitt ist Fließtext.
+- Markdown-Überschriften mit "## " sind erlaubt, um Abschnitte zu gliedern, und
+  **fett** für einzelne Begriffe — aber der Inhalt darunter ist immer Prosa.
+- Roter Faden: Die Absätze bauen aufeinander auf, von Analyse zu Empfehlung.
+- Beziehe IMMER die konkreten Zahlen aus den Daten ein und vergleiche mit den Vortagen."""
 
-Beginne mit einem kurzen Absatz **## Lagebild**, der ALLE heute verfügbaren Zahlen
-zusammenfasst und einordnet: Recovery-Score, HRV, Ruhepuls, Schlafdauer, aktuelles
-Gewicht und Abstand zum Phasenziel, Ernährungsstand (kcal/Protein bisher vs. Ziel),
-ob schon trainiert/Supplements geloggt wurden, Tag/Phase im Plan. Verknüpfe die Werte
-(z. B. „HRV X bei Schlaf Y bedeutet …"), statt sie nur aufzulisten.
+_MORNING_INSTRUCTION = """Erstelle einen ausführlichen, durchdachten Morgenbrief für heute,
+in vollständigen Sätzen und zusammenhängenden Absätzen (keine Stichpunkte).
 
-Danach detaillierte Empfehlungen, jeweils als eigener Absatz mit Überschrift und in
-ganzen Sätzen begründet:
-**## Training** – heutige Einheit, Voll- oder Teillast je nach Recovery, konkrete
-Sätze/Intensität, ggf. Bezug zur letzten gleichen Einheit.
-**## Ernährung** – wie kcal/Protein heute realistisch erreicht werden (konkrete
-Lebensmittel/Mengen), Timing rund ums Training.
-**## Supplements & Recovery** – was heute sinnvoll ist (Timing), Schlaf-/Stress-Hinweise.
+Beginne mit einem Absatz unter **## Lagebild**, der ALLE verfügbaren Zahlen in Prosa
+zusammenfasst und einordnet: Recovery-Score, HRV, Ruhepuls, Schlafdauer, Schritte
+gestern vs. Ziel, aktuelles Gewicht und Abstand zum Phasenziel, Ernährungsstand
+(kcal/Protein bisher vs. Ziel), ob schon trainiert/Supplements/Wasser geloggt wurde,
+Tag/Phase im Plan. Vergleiche dabei ausdrücklich mit den VORTAGEN (Trend der letzten
+Tage bei Ernährung, Training, Supplements, Wasser, Schritten) statt nur den heutigen
+Stand zu nennen, und verknüpfe die Werte zu einer Einschätzung.
 
-Schließe mit **## Wichtigster Hebel heute** (1-2 Sätze). Wenn Daten fehlen, benenne
-es offen statt zu raten."""
+Danach schreibst du detaillierte Empfehlungen als zusammenhängende Absätze:
+**## Training** – die heutige Einheit, Voll- oder Teillast je nach Recovery, konkrete
+Sätze/Intensität, mit Bezug zur letzten gleichen Einheit.
+**## Ernährung & Flüssigkeit** – wie kcal/Protein heute realistisch erreicht werden
+(konkrete Lebensmittel/Mengen), Timing rund ums Training, und ob das Wasserziel und die
+10.000 Schritte gestern erreicht wurden bzw. wie heute.
+**## Supplements & Recovery** – was heute sinnvoll ist (Timing, auch im Licht der
+Vortage), Schlaf- und Stresshinweise.
+
+Schließe mit **## Wichtigster Hebel heute** in ein bis zwei Sätzen. Wenn Daten fehlen,
+benenne es offen statt zu raten."""
 
 _WEEKLY_INSTRUCTION = """Schreibe ein ausführliches Wochenreview der letzten 7 Tage in
 vollständigen, gut lesbaren Sätzen mit klarem rotem Faden — KEINE knappen Stichpunkte,
@@ -77,15 +91,17 @@ Ordne ein, ob das zusammen ein stimmiges Bild ergibt oder wo es hakt.
 Leite daraus **## Bewertung** ab: Was lief diese Woche gut und warum, was bremst den
 Fortschritt — ehrlich und begründet, in Prosa.
 
-Dann **konkrete, schrittweise Empfehlungen** für die kommende Woche, jeweils als eigener
-Absatz in ganzen Sätzen:
+Dann gibst du konkrete, schrittweise Empfehlungen für die kommende Woche, jeweils als
+eigener zusammenhängender Absatz in ganzen Sätzen (keine Stichpunkte):
 **## Training** – was beibehalten, was anpassen (Frequenz, Progression, Geräte).
-**## Ernährung** – kcal/Protein-Justierung mit Begründung am Gewichtstrend.
-**## Supplements** – was sinnvoll ist/fehlt.
-**## Recovery & Schlaf** – konkrete Stellschrauben.
+**## Ernährung** – kcal/Protein-Justierung mit Begründung am Gewichtstrend der Woche.
+**## Supplements** – was sinnvoll ist oder fehlt, gemessen an der Einnahme der Vortage.
+**## Recovery, Schlaf & Aktivität** – Stellschrauben bei Schlaf, Recovery und den
+täglichen 10.000 Schritten (Wochenschnitt der Schritte einordnen).
 
-Schließe mit **## Fokus der Woche**: 1-2 messbare Vorsätze, die den größten Hebel haben.
-Sei ehrlich: wenn Gewicht stagniert oder Training ausfiel, benenne es klar und konstruktiv."""
+Schließe mit **## Fokus der Woche** und ein bis zwei messbaren Vorsätzen, die den größten
+Hebel haben. Sei ehrlich: wenn Gewicht stagniert oder Training ausfiel, benenne es klar
+und konstruktiv."""
 
 
 class CoachService:
@@ -121,30 +137,91 @@ class CoachService:
         except Exception as e:  # noqa: BLE001
             lines.append(f"## Training: nicht abrufbar ({e}).")
 
-        # Supplements: today's intakes vs. recommended
+        week_start = now - timedelta(days=7)
+
+        # Supplements: per-day intake counts over the last 7 days (+ today's detail)
         try:
             sups = {str(s.id): s for s in supplement_service.list_visible_for_user(db, user_id)}
-            day_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-            intakes = supplement_intake_service.list_for_user(db, user_id, day_start, now, None, 200, 0)
-            if intakes:
-                lines.append("## Supplements heute")
-                totals: dict[str, float] = {}
-                for i in intakes:
-                    totals[str(i.supplement_id)] = totals.get(str(i.supplement_id), 0) + float(i.dose)
-                for sid, total in totals.items():
-                    sup = sups.get(sid)
-                    if not sup:
-                        continue
-                    rec = float(sup.recommended_daily_dose) if sup.recommended_daily_dose else None
-                    if rec:
-                        pct = round(total / rec * 100)
-                        lines.append(f"- {sup.name}: {total} {sup.default_unit} ({pct}% der Tagesdosis)")
-                    else:
-                        lines.append(f"- {sup.name}: {total} {sup.default_unit}")
+            week_intakes = supplement_intake_service.list_for_user(db, user_id, week_start, now, None, 500, 0)
+            by_day: dict[str, set[str]] = {}
+            for i in week_intakes:
+                day = i.taken_at.strftime("%d.%m")
+                by_day.setdefault(day, set()).add(str(i.supplement_id))
+            lines.append("## Supplements (letzte 7 Tage)")
+            if by_day:
+                lines.append(f"An {len(by_day)} von 7 Tagen geloggt.")
+                today_key = now.strftime("%d.%m")
+                today_ids = by_day.get(today_key, set())
+                if today_ids:
+                    names = ", ".join(sups[s].name for s in today_ids if s in sups)
+                    lines.append(f"Heute bereits: {names}.")
+                else:
+                    lines.append("Heute noch keine Supplements geloggt.")
             else:
-                lines.append("## Supplements: heute noch nichts geloggt.")
+                lines.append("In den letzten 7 Tagen nichts geloggt.")
         except Exception as e:  # noqa: BLE001
             lines.append(f"## Supplements: nicht abrufbar ({e}).")
+
+        # Nutrition: per-day kcal + protein over the last 7 days
+        try:
+            entries = db.execute(
+                select(NutritionEntry).where(
+                    NutritionEntry.user_id == user_id, NutritionEntry.eaten_at >= week_start
+                )
+            ).scalars().all()
+            if entries:
+                per_day: dict[str, tuple[float, float]] = {}
+                for e in entries:
+                    day = e.eaten_at.strftime("%d.%m")
+                    kcal, prot = per_day.get(day, (0.0, 0.0))
+                    per_day[day] = (kcal + float(e.calories or 0), prot + float(e.protein_g or 0))
+                lines.append("## Ernährung (letzte 7 Tage, kcal / Protein g)")
+                for day in sorted(per_day):
+                    kcal, prot = per_day[day]
+                    lines.append(f"{day}: {round(kcal)} kcal, {round(prot)} g")
+            else:
+                lines.append("## Ernährung: in den letzten 7 Tagen nichts geloggt.")
+        except Exception as e:  # noqa: BLE001
+            lines.append(f"## Ernährung: nicht abrufbar ({e}).")
+
+        # Cardio: last 7 days
+        try:
+            cardio = db.execute(
+                select(CardioSession).where(
+                    CardioSession.user_id == user_id, CardioSession.performed_at >= week_start
+                ).order_by(CardioSession.performed_at)
+            ).scalars().all()
+            if cardio:
+                total_min = sum(float(c.duration_min) for c in cardio)
+                lines.append(f"## Cardio (letzte 7 Tage): {len(cardio)} Einheiten, zusammen {round(total_min)} min.")
+            else:
+                lines.append("## Cardio: in den letzten 7 Tagen nichts geloggt.")
+        except Exception as e:  # noqa: BLE001
+            lines.append(f"## Cardio: nicht abrufbar ({e}).")
+
+        # Steps: per-day totals over the last 7 days (Apple Health, goal 10k)
+        try:
+            rows = db.execute(
+                select(
+                    func.date(DataPointSeries.recorded_at).label("day"),
+                    func.sum(DataPointSeries.value).label("total"),
+                )
+                .join(SeriesTypeDefinition, SeriesTypeDefinition.id == DataPointSeries.series_type_definition_id)
+                .where(
+                    SeriesTypeDefinition.code == SeriesType.steps.value,
+                    DataPointSeries.recorded_at >= week_start,
+                )
+                .group_by(func.date(DataPointSeries.recorded_at))
+                .order_by(func.date(DataPointSeries.recorded_at))
+            ).all()
+            if rows:
+                lines.append("## Schritte (letzte 7 Tage, Ziel 10.000/Tag)")
+                for day, total in rows:
+                    lines.append(f"{day}: {round(float(total))} Schritte")
+            else:
+                lines.append("## Schritte: keine Daten (in Apple Health / Health Auto Export Step Count exportieren).")
+        except Exception as e:  # noqa: BLE001
+            lines.append(f"## Schritte: nicht abrufbar ({e}).")
 
         return "\n".join(lines) if lines else "Keine Daten verfügbar."
 

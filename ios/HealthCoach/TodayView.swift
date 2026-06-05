@@ -8,6 +8,7 @@ final class TodayViewModel: ObservableObject {
     @Published var currentWeight: Double?
     @Published var trainingLoggedToday = false
     @Published var supplementsLoggedToday = 0
+    @Published var stepsToday = 0
     @Published var loading = false
 
     private static func iso(_ daysAgo: Int) -> String {
@@ -24,8 +25,10 @@ final class TodayViewModel: ObservableObject {
         async let trend = try? APIClient.shared.bodyTrend(startDate: Self.iso(7), endDate: Self.iso(0))
         async let sessions = try? APIClient.shared.trainingSessions(limit: 10)
         async let intakes = try? APIClient.shared.intakes(startDate: Self.iso(1), endDate: Self.iso(0))
+        async let steps = try? APIClient.shared.stepsToday()
 
-        let (r, s, b, t, sess, intk) = await (rec, slp, body, trend, sessions, intakes)
+        let (r, s, b, t, sess, intk, stp) = await (rec, slp, body, trend, sessions, intakes, steps)
+        stepsToday = (stp ?? nil) ?? 0
 
         recovery = r?.last
         sleepMinutes = s?.last?.durationMinutes
@@ -135,6 +138,8 @@ struct TodayView: View {
         l.append("Heutiges Workout laut Plan: \(PlanConfig.workoutForToday()). Training heute \(vm.trainingLoggedToday ? "bereits geloggt" : "noch nicht geloggt").")
         l.append("Ernährung heute bisher: \(nutrition.totalKcal) kcal von \(nutrition.calorieGoalText), \(nutrition.totalProtein) g von \(nutrition.proteinGoal) g Protein (\(nutrition.todayEntries.count) Einträge).")
         l.append("Supplements heute geloggt: \(vm.supplementsLoggedToday).")
+        l.append("Schritte heute: \(vm.stepsToday) von 10.000 (Ziel).")
+        l.append("Wasser: heute \(fmt(daily.waterLiters)) L, gestern \(fmt(DailyStore.water(daysAgo: 1))) L, vorgestern \(fmt(DailyStore.water(daysAgo: 2))) L (Ziel \(fmt(daily.waterGoal)) L).")
         if let alert = PlanConfig.phaseTransitionAlert { l.append("Phasen-Hinweis: \(alert)") }
         return l.joined(separator: "\n")
     }
@@ -298,6 +303,8 @@ struct TodayView: View {
                         .font(.caption2).foregroundStyle(Theme.textSecondary)
                 }
             }
+            agendaRow("steps", "Schritte \(vm.stepsToday)/10.000",
+                      done: vm.stepsToday >= 10000)
             if Calendar.current.component(.weekday, from: Date()) == 1 {
                 agendaRow("waist", "Bauchumfang messen (Sonntag)", done: false)
             }
