@@ -41,25 +41,51 @@ analysierst und empfiehlst; Änderungen macht der Nutzer in der App."""
 # --- Proactive briefing prompts ---
 
 _BRIEF_FORMAT = """# Ausgabeformat (strikt einhalten)
-Zeile 1: EINE knackige Headline (max. 12 Wörter, kein Markdown, keine Aufzählung).
-Danach eine Leerzeile, dann der Body in kurzem Markdown. Halte dich knapp und
-konkret — lieber 4-6 prägnante Bullets als ein Fließtext-Block. Keine Floskeln."""
+Zeile 1: EINE prägnante Headline (max. 12 Wörter, kein Markdown, keine Aufzählung).
+Danach eine Leerzeile, dann der Body. Schreib in klaren, vollständigen Sätzen mit
+rotem Faden — keine kryptischen Stichworte. Markdown-Überschriften (## ) und **fett**
+sind erlaubt, um zu gliedern. Beziehe IMMER die konkreten Zahlen aus den Daten ein."""
 
-_MORNING_INSTRUCTION = """Erstelle den Morgenbrief für heute. Beziehe Recovery, Schlaf,
-heutiges geplantes Workout und die Ernährungsziele konkret ein. Struktur des Body:
-- **Fokus heute**: 1 Satz, was heute zählt (an Recovery + Phase ausgerichtet).
-- **Training**: heutige Einheit + ob Voll- oder Teillast je nach Recovery.
-- **Ernährung**: kcal/Protein-Ziel + 1 konkreter Tipp zum Erreichen.
-- **Achtung**: max. 1 Warnung (Schlafmangel, niedrige HRV, Phasen-Übergang) — nur wenn relevant.
-Wenn Daten fehlen, sag es kurz statt zu raten."""
+_MORNING_INSTRUCTION = """Erstelle einen ausführlichen, durchdachten Morgenbrief für heute.
 
-_WEEKLY_INSTRUCTION = """Erstelle das Wochenreview der letzten 7 Tage. Werte aus:
-Gewichtstrend vs. Phasenziel, Trainingsvolumen/-frequenz, Recovery-Schnitt,
-Ernährungs-Adherence (kcal/Protein). Struktur des Body:
-- **Bilanz**: Liegt der Nutzer auf Kurs zum Phasenziel? (mit Zahl belegen)
-- **Was lief gut** / **Was nachjustieren**: je 1-2 Bullets, datenbasiert.
-- **Diese Woche**: 1-2 konkrete, messbare Vorsätze.
-Sei ehrlich — wenn das Gewicht stagniert oder das Training ausfiel, benenne es."""
+Beginne mit einem kurzen Absatz **## Lagebild**, der ALLE heute verfügbaren Zahlen
+zusammenfasst und einordnet: Recovery-Score, HRV, Ruhepuls, Schlafdauer, aktuelles
+Gewicht und Abstand zum Phasenziel, Ernährungsstand (kcal/Protein bisher vs. Ziel),
+ob schon trainiert/Supplements geloggt wurden, Tag/Phase im Plan. Verknüpfe die Werte
+(z. B. „HRV X bei Schlaf Y bedeutet …"), statt sie nur aufzulisten.
+
+Danach detaillierte Empfehlungen, jeweils als eigener Absatz mit Überschrift und in
+ganzen Sätzen begründet:
+**## Training** – heutige Einheit, Voll- oder Teillast je nach Recovery, konkrete
+Sätze/Intensität, ggf. Bezug zur letzten gleichen Einheit.
+**## Ernährung** – wie kcal/Protein heute realistisch erreicht werden (konkrete
+Lebensmittel/Mengen), Timing rund ums Training.
+**## Supplements & Recovery** – was heute sinnvoll ist (Timing), Schlaf-/Stress-Hinweise.
+
+Schließe mit **## Wichtigster Hebel heute** (1-2 Sätze). Wenn Daten fehlen, benenne
+es offen statt zu raten."""
+
+_WEEKLY_INSTRUCTION = """Schreibe ein ausführliches Wochenreview der letzten 7 Tage in
+vollständigen, gut lesbaren Sätzen mit klarem rotem Faden — KEINE knappen Stichpunkte,
+sondern zusammenhängende Absätze, die aufeinander aufbauen.
+
+Beginne mit **## Ist-Analyse**: Schildere in mehreren Sätzen, wo der Nutzer aktuell
+steht — Gewichtstrend der Woche und Abstand/Pace zum Phasenziel (mit Zahlen belegt),
+Trainingsfrequenz und -volumen, Recovery-Verlauf, Ernährungs-Adherence (kcal/Protein).
+Ordne ein, ob das zusammen ein stimmiges Bild ergibt oder wo es hakt.
+
+Leite daraus **## Bewertung** ab: Was lief diese Woche gut und warum, was bremst den
+Fortschritt — ehrlich und begründet, in Prosa.
+
+Dann **konkrete, schrittweise Empfehlungen** für die kommende Woche, jeweils als eigener
+Absatz in ganzen Sätzen:
+**## Training** – was beibehalten, was anpassen (Frequenz, Progression, Geräte).
+**## Ernährung** – kcal/Protein-Justierung mit Begründung am Gewichtstrend.
+**## Supplements** – was sinnvoll ist/fehlt.
+**## Recovery & Schlaf** – konkrete Stellschrauben.
+
+Schließe mit **## Fokus der Woche**: 1-2 messbare Vorsätze, die den größten Hebel haben.
+Sei ehrlich: wenn Gewicht stagniert oder Training ausfiel, benenne es klar und konstruktiv."""
 
 
 class CoachService:

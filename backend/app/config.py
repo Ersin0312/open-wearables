@@ -51,7 +51,7 @@ class Settings(BaseSettings):
     # Set ANTHROPIC_API_KEY in backend/config/.env to enable the in-app coach.
     ANTHROPIC_API_KEY: SecretStr | None = None
     COACH_MODEL: str = "claude-sonnet-4-6"
-    COACH_MAX_TOKENS: int = 1500
+    COACH_MAX_TOKENS: int = 3000
 
     # Sentry
     SENTRY_ENABLED: bool = False
