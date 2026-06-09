@@ -38,6 +38,21 @@ final class CoachViewModel: ObservableObject {
     func suggestPlan() {
         input = "Erstelle mir auf Basis meiner aktuellen Daten einen anpassbaren Tagesplan für heute (Ernährung, Flüssigkeit, NEMs, Recovery, Training)."
     }
+
+    /// One-tap holistic review: send a thorough check across all logged data.
+    func reviewEverything() async {
+        input = """
+        Mach bitte einen Gesamt-Check und geh einmal komplett durch ALLE meine \
+        Daten der letzten 7 Tage: Training (Volumen, Frequenz, Progression), \
+        Ernährung (kcal/Protein pro Tag), Supplements, Wasser, Schritte (Ziel \
+        10.000/Tag), Recovery, Schlaf und meine Körperwerte. Prüfe sie auf \
+        Konsistenz, Lücken und Plausibilität: Wo logge ich unvollständig, wo \
+        passt etwas nicht zusammen, und liege ich auf Kurs zum Phasenziel? Nenne \
+        mir am Ende die drei wichtigsten Stellschrauben. Antworte in \
+        vollständigen, zusammenhängenden Sätzen.
+        """
+        await send()
+    }
 }
 
 struct CoachView: View {
@@ -74,6 +89,13 @@ struct CoachView: View {
                                 Label("Tagesplan vorschlagen", systemImage: "wand.and.stars")
                             }
                             .buttonStyle(.bordered)
+                            Button {
+                                Task { await vm.reviewEverything() }
+                            } label: {
+                                Label("Gesamt-Check (alle Daten prüfen)", systemImage: "checklist.checked")
+                            }
+                            .buttonStyle(.bordered)
+                            .disabled(vm.sending)
                         }
                         .padding()
                     }

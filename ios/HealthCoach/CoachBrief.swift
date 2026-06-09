@@ -135,7 +135,7 @@ struct BriefMarkdown: View {
 
     @ViewBuilder
     private func row(_ line: String) -> some View {
-        if line.hasPrefix("- ") || line.hasPrefix("* ") {
+        if line.hasPrefix("- ") || line.hasPrefix("* ") || line.hasPrefix("• ") {
             // Briefings should be prose; if the model still emits a bullet,
             // render it as a normal paragraph (no marker) so it reads as text.
             Text(md(String(line.dropFirst(2))))

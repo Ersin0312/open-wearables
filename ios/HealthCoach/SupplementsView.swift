@@ -100,12 +100,17 @@ final class SupplementsViewModel: ObservableObject {
     }
 }
 
+/// One enum drives all supplement sheets. Multiple stacked `.sheet(isPresented:)`
+/// modifiers conflict — especially when this view is itself presented in a sheet
+/// — so a single `.sheet(item:)` is the reliable pattern.
+enum SupplementSheet: Int, Identifiable {
+    case logSingle, createStack, createSupplement, library
+    var id: Int { rawValue }
+}
+
 struct SupplementsView: View {
     @StateObject private var vm = SupplementsViewModel()
-    @State private var showLogSingle = false
-    @State private var showCreateStack = false
-    @State private var showCreateSupplement = false
-    @State private var showLibrary = false
+    @State private var activeSheet: SupplementSheet?
 
     var body: some View {
         NavigationStack {
@@ -128,45 +133,45 @@ struct SupplementsView: View {
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Menu {
-                        Button { showLogSingle = true } label: { Label("Einzeln loggen", systemImage: "pills") }
-                        Button { showCreateStack = true } label: { Label("Stack anlegen", systemImage: "square.stack.3d.up") }
-                        Button { showCreateSupplement = true } label: { Label("Eigene NEM", systemImage: "plus.circle") }
+                        Button { activeSheet = .logSingle } label: { Label("Einzeln loggen", systemImage: "pills") }
+                        Button { activeSheet = .createStack } label: { Label("Stack anlegen", systemImage: "square.stack.3d.up") }
+                        Button { activeSheet = .createSupplement } label: { Label("Eigene NEM", systemImage: "plus.circle") }
                     } label: { Image(systemName: "plus") }
                 }
                 ToolbarItem(placement: .topBarLeading) {
-                    Button { showLibrary = true } label: { Image(systemName: "books.vertical") }
+                    Button { activeSheet = .library } label: { Image(systemName: "books.vertical") }
                 }
             }
-            .sheet(isPresented: $showLogSingle) {
-                LogSingleSheet(supplements: vm.supplements) { sup, dose in
-                    Task { await vm.logSingle(supplement: sup, dose: dose) }
-                }
-            }
-            .sheet(isPresented: $showCreateStack) {
-                CreateStackSheet(supplements: vm.supplements) { name, items in
-                    Task {
-                        do {
-                            _ = try await APIClient.shared.createStack(name: name, items: items)
-                            await vm.load()
-                        } catch { vm.error = error.localizedDescription }
+            .sheet(item: $activeSheet) { sheet in
+                switch sheet {
+                case .logSingle:
+                    LogSingleSheet(supplements: vm.supplements) { sup, dose in
+                        Task { await vm.logSingle(supplement: sup, dose: dose) }
                     }
-                }
-            }
-            .sheet(isPresented: $showCreateSupplement) {
-                CreateSupplementSheet { draft in
-                    Task {
-                        do {
-                            _ = try await APIClient.shared.createSupplement(
-                                name: draft.name, brand: draft.brand, category: draft.category,
-                                defaultDose: draft.defaultDose, defaultUnit: draft.defaultUnit,
-                                recommendedDailyDose: draft.recommendedDailyDose, notes: draft.notes)
-                            await vm.load()
-                        } catch { vm.error = error.localizedDescription }
+                case .createStack:
+                    CreateStackSheet(supplements: vm.supplements) { name, items in
+                        Task {
+                            do {
+                                _ = try await APIClient.shared.createStack(name: name, items: items)
+                                await vm.load()
+                            } catch { vm.error = error.localizedDescription }
+                        }
                     }
+                case .createSupplement:
+                    CreateSupplementSheet { draft in
+                        Task {
+                            do {
+                                _ = try await APIClient.shared.createSupplement(
+                                    name: draft.name, brand: draft.brand, category: draft.category,
+                                    defaultDose: draft.defaultDose, defaultUnit: draft.defaultUnit,
+                                    recommendedDailyDose: draft.recommendedDailyDose, notes: draft.notes)
+                                await vm.load()
+                            } catch { vm.error = error.localizedDescription }
+                        }
+                    }
+                case .library:
+                    NemLibrarySheet(supplements: vm.supplements, onChanged: { Task { await vm.load() } })
                 }
-            }
-            .sheet(isPresented: $showLibrary) {
-                NemLibrarySheet(supplements: vm.supplements, onChanged: { Task { await vm.load() } })
             }
             .task { await vm.load() }
         }
